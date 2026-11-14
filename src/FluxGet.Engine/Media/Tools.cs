@@ -14,6 +14,11 @@ public sealed class ToolLocator(string? toolsDirectory)
             dirs.AddRange((Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator));
             if (OperatingSystem.IsWindows())
             {
+                foreach (var scope in new[] { EnvironmentVariableTarget.User, EnvironmentVariableTarget.Machine })
+                    dirs.AddRange((Environment.GetEnvironmentVariable("PATH", scope) ?? "").Split(Path.PathSeparator).Select(Environment.ExpandEnvironmentVariables));
+            }
+            if (OperatingSystem.IsWindows())
+            {
                 var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 dirs.Add(Path.Combine(local, "Microsoft", "WinGet", "Links"));
             }

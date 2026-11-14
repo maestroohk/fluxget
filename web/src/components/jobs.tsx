@@ -39,7 +39,9 @@ export function StatusLine({ job }: { job: Job }) {
   const p = percent(job)
   const active = isActive(job.status)
   const parts: ReactNode[] = []
-  parts.push(<span key="b" className="num">{job.totalBytes ? `${bytes(job.receivedBytes)} of ${bytes(job.totalBytes)}` : bytes(job.receivedBytes)}</span>)
+  const converting = job.extra?.mode === 'convert' && job.status !== 'Completed'
+  if (!converting) parts.push(<span key="b" className="num">{job.totalBytes ? `${bytes(job.receivedBytes)} of ${bytes(job.totalBytes)}` : bytes(job.receivedBytes)}</span>)
+  else if (job.phase) parts.push(<span key="c">{job.phase}</span>)
   if (p != null && job.status !== 'Completed') parts.push(<span key="p" className="num">{p.toFixed(p < 10 ? 1 : 0)}%</span>)
   if (active && job.eta != null) parts.push(<span key="e" className="num">{duration(job.eta)} left</span>)
   if (!active) parts.push(<span key="h" className="truncate">{job.group ?? host(job.url)}</span>)

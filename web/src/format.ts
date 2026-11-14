@@ -31,7 +31,11 @@ export function ago(iso: string | null | undefined): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })
 }
 
-export const percent = (j: Job) => (j.totalBytes ? Math.min(100, (j.receivedBytes / j.totalBytes) * 100) : null)
+export function percent(j: Job): number | null {
+  const p = j.extra?.progress
+  if (typeof p === 'number' && j.status !== 'Completed') return Math.min(100, p * 100)
+  return j.totalBytes ? Math.min(100, (j.receivedBytes / j.totalBytes) * 100) : null
+}
 
 export function host(url: string) {
   if (url.startsWith('magnet:')) return 'magnet link'

@@ -146,16 +146,18 @@ internal sealed class MainForm : Form
         ShowWindow();
         if (string.IsNullOrWhiteSpace(argument) || _web.CoreWebView2 is null) return;
         string? url = null;
+        var type = "add";
         if (argument.StartsWith("fluxget:", StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(argument, UriKind.Absolute, out var u))
         {
-            var query = System.Web.HttpUtility.ParseQueryString(u.Query);
-            url = query["url"];
+            url = System.Web.HttpUtility.ParseQueryString(u.Query)["url"];
+            if (u.Host.Equals("media", StringComparison.OrdinalIgnoreCase)) type = "media";
         }
         else if (argument.StartsWith("http", StringComparison.OrdinalIgnoreCase) || argument.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
         {
             url = argument;
         }
-        if (url is not null) _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "add", url }));
+        if (url is not null && (url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || url.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase)))
+            _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type, url }));
     }
 
     private void ShowWindow()

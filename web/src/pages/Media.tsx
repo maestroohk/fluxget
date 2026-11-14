@@ -15,6 +15,7 @@ interface Entry { id: string; url: string; title: string; duration: number | nul
 interface MediaInfo {
   type: 'video' | 'playlist'
   url: string
+  id: string
   title: string
   uploader: string | null
   duration: number | null
@@ -131,7 +132,7 @@ function MediaResult({ info, onDone }: { info: MediaInfo; onDone: () => void }) 
 
   const download = async () => {
     setBusy(true)
-    const items = isList ? entries.filter(e => selected.has(e.id)).map(e => ({ url: e.url, title: e.title })) : [{ url: info.url, title: info.title }]
+    const items = isList ? entries.filter(e => selected.has(e.id)).map(e => ({ url: e.url, title: e.title, id: e.id })) : [{ url: info.url, title: info.title, id: info.id }]
     const ok = await attempt(() => api.post('/api/media/download', {
       items, group: isList ? info.title : null, mode, height, container,
       audioFormat, audioQuality: fmt.qualities.length ? quality : null, subtitles: subs,

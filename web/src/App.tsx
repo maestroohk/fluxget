@@ -73,7 +73,11 @@ export function App() {
     const wv = (window as any).chrome?.webview
     if (!wv) return
     desktop.send({ type: 'theme', dark: document.documentElement.classList.contains('dark') })
-    const handler = (e: MessageEvent) => { if (e.data?.type === 'add' && typeof e.data.url === 'string') openAdd(e.data.url) }
+    const handler = (e: MessageEvent) => {
+      if (typeof e.data?.url !== 'string') return
+      if (e.data.type === 'add') openAdd(e.data.url)
+      if (e.data.type === 'media') navigate('media', { url: e.data.url })
+    }
     wv.addEventListener('message', handler)
     return () => wv.removeEventListener('message', handler)
   }, [openAdd])

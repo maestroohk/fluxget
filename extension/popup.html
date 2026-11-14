@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/icon-32.png" alt="" width="22" height="22">
+    <strong>FluxGet</strong>
+    <span id="status" class="dot" title=""></span>
+  </header>
+
+  <section id="offline" hidden>
+    <p class="lead">FluxGet isn't running on this computer.</p>
+    <button id="launch" class="primary">Open FluxGet</button>
+  </section>
+
+  <section id="pair" hidden>
+    <p class="lead">Connect this browser to FluxGet to send downloads to it.</p>
+    <button id="pair-start" class="primary">Connect</button>
+    <form id="pair-form" hidden>
+      <label for="pair-code">Enter the code shown in FluxGet</label>
+      <input id="pair-code" inputmode="numeric" autocomplete="off" maxlength="7" placeholder="000 000">
+      <button class="primary">Confirm</button>
+    </form>
+    <p id="pair-error" class="error" hidden></p>
+  </section>
+
+  <main id="main" hidden>
+    <section id="media" hidden>
+      <div class="card">
+        <div id="media-head" class="muted">This page has a video FluxGet can download.</div>
+        <div id="media-info" hidden>
+          <div id="media-title" class="title"></div>
+          <div class="row">
+            <select id="media-quality" aria-label="Quality"></select>
+            <button id="media-go" class="primary">Download</button>
+          </div>
+        </div>
+        <button id="media-find" class="primary wide">Find formats</button>
+        <p id="media-error" class="error" hidden></p>
+      </div>
+    </section>
+
+    <section id="detected" hidden>
+      <h2>Media on this page</h2>
+      <ul id="detected-list"></ul>
+    </section>
+
+    <section>
+      <h2>Downloads <button id="open-app" class="link">Open FluxGet</button></h2>
+      <ul id="jobs"><li class="muted">Nothing downloading.</li></ul>
+    </section>
+
+    <details>
+      <summary>Settings</summary>
+      <label class="toggle"><input type="checkbox" id="opt-capture"> Send browser downloads to FluxGet</label>
+      <label class="indent">Only files larger than <input type="number" id="opt-min" min="0" max="10000"> MB</label>
+      <label class="toggle"><input type="checkbox" id="opt-cookies"> Pass my site cookies with downloads <small>(needed for files behind a sign-in)</small></label>
+      <label class="toggle"><input type="checkbox" id="opt-detect"> Detect media files on pages</label>
+      <label class="toggle"><input type="checkbox" id="opt-button"> Show a download button on videos</label>
+      <p class="muted small">Detection and the video button need access to the sites you visit; Chrome asks once. FluxGet never downloads DRM-protected video.</p>
+      <button id="disconnect" class="link danger">Disconnect this browser</button>
+    </details>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

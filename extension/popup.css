@@ -1,0 +1,44 @@
+:root { --bg: #f5f4f0; --surface: #fff; --ink: #17181c; --muted: #6c6f77; --line: #e4e2dc; --accent: #e2522a; --bad: #c93c3c; --ok: #1d8f5a; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0c0d0f; --surface: #15161a; --ink: #edece8; --muted: #8d9098; --line: #26282d; --accent: #ff6e43; --bad: #f0706b; --ok: #3fc486; } }
+* { box-sizing: border-box; }
+body { margin: 0; width: 360px; background: var(--bg); color: var(--ink); font: 13px/1.45 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
+header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--surface); }
+header strong { flex: 1; font-size: 14px; letter-spacing: -0.01em; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.on { background: var(--ok); }
+.dot.off { background: var(--bad); }
+section, details { padding: 12px 14px; }
+section + section, details { border-top: 1px solid var(--line); }
+h2 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.lead { margin: 0 0 10px; }
+.muted { color: var(--muted); }
+.small { font-size: 11.5px; }
+.error { color: var(--bad); margin: 8px 0 0; }
+button { font: inherit; cursor: pointer; }
+.primary { height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--ink); color: var(--bg); font-weight: 600; }
+.primary:disabled { opacity: 0.5; cursor: default; }
+.wide { width: 100%; margin-top: 8px; }
+.link { border: 0; background: none; color: var(--accent); padding: 0; font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.link.danger { color: var(--bad); margin-top: 8px; }
+.card { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.title { font-weight: 600; margin: 2px 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.row { display: flex; gap: 8px; }
+select, input[type=number], #pair-code { height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); padding: 0 8px; font: inherit; }
+select { flex: 1; min-width: 0; }
+#pair-form { display: grid; gap: 8px; margin-top: 10px; }
+#pair-code { font: 600 20px/1 ui-monospace, Consolas, monospace; letter-spacing: 0.2em; text-align: center; height: 40px; }
+ul { list-style: none; margin: 0; padding: 0; }
+li { padding: 6px 0; }
+li + li { border-top: 1px solid var(--line); }
+.job-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.job-meta { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar { height: 3px; border-radius: 2px; background: var(--line); margin: 4px 0; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); transition: width 0.4s; }
+.det { display: flex; gap: 8px; align-items: center; }
+.det span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.det button { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+summary { cursor: pointer; font-weight: 600; font-size: 12px; color: var(--muted); }
+label.toggle, label.indent { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; }
+label.indent { margin-left: 24px; align-items: center; color: var(--muted); }
+label.indent input { width: 70px; height: 26px; }
+small { color: var(--muted); }

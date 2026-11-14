@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using FluxGet.Engine;
 using FluxGet.Engine.Http;
 using FluxGet.Engine.Media;
+using FluxGet.Engine.Torrents;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 
@@ -53,7 +54,11 @@ public static class FluxGetServer
         builder.Services.AddSingleton<AccessKeys>();
         builder.Services.AddSingleton<PairingService>();
         builder.Services.AddSingleton<AppSignals>();
+        builder.Services.AddSingleton<YtDlp>();
+        builder.Services.AddSingleton(sp => new TorrentRunner(engineOptions, store));
         builder.Services.AddSingleton<IJobRunner>(_ => new HttpRunner(engineOptions));
+        builder.Services.AddSingleton<IJobRunner>(sp => new MediaRunner(sp.GetRequiredService<YtDlp>()));
+        builder.Services.AddSingleton<IJobRunner>(sp => sp.GetRequiredService<TorrentRunner>());
         builder.Services.AddSingleton(sp => new JobManager(store, engineOptions, sp.GetServices<IJobRunner>(), sp.GetRequiredService<ILogger<JobManager>>()));
         builder.Services.AddHostedService<EngineLifetime>();
         builder.Services.AddRateLimiter(r =>
@@ -86,6 +91,8 @@ public static class FluxGetServer
         }
 
         app.MapCore();
+        app.MapMedia();
+        app.MapTorrents();
         if (webRoot is not null)
             app.MapFallback(async ctx =>
             {

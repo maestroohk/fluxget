@@ -126,3 +126,47 @@ public sealed class ConnectorTests
         listener.Stop();
     }
 }
+
+public sealed class MediaParsingTests
+{
+    [Fact]
+    public void Video_options_prefer_direct_formats_with_known_size()
+    {
+        const string json = """
+        {"id":"x","title":"Clip","extractor_key":"Youtube","duration":10,
+         "formats":[
+          {"format_id":"a","vcodec":"none","acodec":"mp4a.40.2","abr":128,"ext":"m4a","protocol":"https","filesize":1000},
+          {"format_id":"h","vcodec":"avc1","acodec":"none","height":720,"tbr":3000,"ext":"mp4","protocol":"m3u8_native"},
+          {"format_id":"d","vcodec":"avc1","acodec":"none","height":720,"tbr":2000,"ext":"mp4","protocol":"https","filesize":50000},
+          {"format_id":"s","vcodec":"vp9","acodec":"none","height":360,"tbr":500,"ext":"webm","protocol":"https"}
+         ],
+         "subtitles":{"en":[],"live_chat":[]}}
+        """;
+        var info = FluxGet.Engine.Media.YtDlp.Parse(json, "https://youtube.com/watch?v=x", 1);
+        Assert.Equal("video", info.Type);
+        Assert.Equal([720, 360], info.Video.Select(v => v.Height));
+        Assert.Equal(51000, info.Video[0].Size);
+        Assert.False(info.Video[0].Estimated);
+        Assert.Null(info.Video[1].Size);
+        Assert.Equal(["en"], info.Subtitles);
+    }
+
+    [Fact]
+    public void Playlist_entries_are_paged()
+    {
+        var entries = string.Join(",", Enumerable.Range(1, 100).Select(i => $"{{\"id\":\"v{i}\",\"url\":\"https://youtube.com/watch?v=v{i}\",\"title\":\"T{i}\"}}"));
+        var info = FluxGet.Engine.Media.YtDlp.Parse($"{{\"_type\":\"playlist\",\"id\":\"p\",\"title\":\"P\",\"playlist_count\":150,\"entries\":[{entries}]}}", "https://youtube.com/playlist?list=p", 1);
+        Assert.Equal(100, info.Entries.Count);
+        Assert.True(info.HasMore);
+        var last = FluxGet.Engine.Media.YtDlp.Parse($"{{\"_type\":\"playlist\",\"id\":\"p\",\"title\":\"P\",\"playlist_count\":150,\"entries\":[{entries}]}}", "https://youtube.com/playlist?list=p", 101);
+        Assert.False(last.HasMore);
+    }
+
+    [Theory]
+    [InlineData("ERROR: [generic] Unsupported URL: https://example.com", "isn't supported")]
+    [InlineData("ERROR: [youtube] x: Private video. Sign in if you've been granted access", "private")]
+    [InlineData("ERROR: [vimeo] 1: The web client only works when logged-in. Use --cookies", "requires signing in")]
+    [InlineData("ERROR: [youtube] x: Video unavailable", "unavailable")]
+    public void Errors_are_explained(string stderr, string expected) =>
+        Assert.Contains(expected, FluxGet.Engine.Media.YtDlp.FriendlyError(stderr));
+}
