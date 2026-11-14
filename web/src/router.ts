@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
-export type Page = 'overview' | 'downloads' | 'media' | 'torrents' | 'scheduler' | 'completed' | 'settings'
-const PAGES: Page[] = ['overview', 'downloads', 'media', 'torrents', 'scheduler', 'completed', 'settings']
+export type Page = 'overview' | 'downloads' | 'media' | 'player' | 'torrents' | 'scheduler' | 'completed' | 'settings'
+const PAGES: Page[] = ['overview', 'downloads', 'media', 'player', 'torrents', 'scheduler', 'completed', 'settings']
 
 function parse(): { page: Page; params: URLSearchParams } {
   const [path, query] = location.hash.replace(/^#\/?/, '').split('?')

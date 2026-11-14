@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Copy, ExternalLink, FolderOpen, Link2, Pause, Play, RotateCcw, Trash2 } from 'lucide-react'
-import { api, type Job } from '../api'
+import { AlertTriangle, Copy, ExternalLink, FolderOpen, Link2, MonitorPlay, Pause, Play, RotateCcw, Trash2 } from 'lucide-react'
+import { api, desktop, type Job } from '../api'
+import { player } from '../player'
+import { navigate } from '../router'
 import { useStore } from '../store'
-import { ago, bytes, canPause, canResume, displayName, duration, isActive, limitText, parseLimit, percent, speed, statusInfo } from '../format'
+import { ago, bytes, canPause, canResume, displayName, duration, isActive, isPlayable, limitText, parseLimit, percent, speed, statusInfo } from '../format'
 import { Button, cx, Drawer, Field, inputClass, Pill, Progress, SegmentMap, Sparkline, Toggle } from '../ui'
 import { FileIcon, jobActions } from './jobs'
 import { attempt, toast } from './toast'
@@ -90,8 +92,18 @@ export function JobDetail({ jobId, fallback, onClose }: { jobId: number | null; 
         <div className="flex flex-wrap gap-2">
           {canPause(job.status) && <Button onClick={() => jobActions.pause(job)}><Pause size={15} /> Pause</Button>}
           {canResume(job.status) && <Button variant="primary" onClick={() => jobActions.resume(job)}><Play size={15} /> {job.status === 'Paused' ? 'Resume' : 'Retry'}</Button>}
+          {desktop.available() && job.status === 'Completed' && isPlayable(job.filePath) && (
+            <Button variant="primary" onClick={() => { player('openJob', { jobId: job.id, path: job.filePath, title: displayName(job) }); onClose(); navigate('player') }}><MonitorPlay size={15} /> Play</Button>
+          )}
+          {desktop.available() && job.status !== 'Completed' && job.kind === 'Http' && isPlayable(job.fileName) && (
+            <Button onClick={() => attempt(async () => {
+              const info = await api.get<{ available: boolean; reason: string | null }>(`/api/player/preview/${job.id}`)
+              if (!info.available) throw new Error(info.reason ?? 'Preview is not available yet.')
+              player('openJob', { jobId: job.id, title: displayName(job) }); onClose(); navigate('player')
+            })}><MonitorPlay size={15} /> Preview</Button>
+          )}
           {job.status === 'Completed' && <>
-            <Button variant="primary" onClick={() => jobActions.open(job)}><ExternalLink size={15} /> Open</Button>
+            <Button variant={isPlayable(job.filePath) && desktop.available() ? 'secondary' : 'primary'} onClick={() => jobActions.open(job)}><ExternalLink size={15} /> Open</Button>
             <Button onClick={() => jobActions.open(job, true)}><FolderOpen size={15} /> Show in folder</Button>
           </>}
           {job.status !== 'Completed' && <Button onClick={() => jobActions.restart(job)}><RotateCcw size={15} /> Restart</Button>}

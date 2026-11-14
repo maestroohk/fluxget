@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCheck, ExternalLink, FolderOpen, Search } from 'lucide-react'
-import { api, type Job, type JobKind } from '../api'
+import { CheckCheck, ExternalLink, FolderOpen, MonitorPlay, Search } from 'lucide-react'
+import { api, desktop, type Job, type JobKind } from '../api'
+import { player } from '../player'
+import { navigate } from '../router'
 import { useStore } from '../store'
-import { ago, bytes, displayName } from '../format'
+import { ago, bytes, displayName, isPlayable } from '../format'
 import { Button, Empty, IconButton, inputClass, Segmented } from '../ui'
 import { FileIcon, jobActions } from '../components/jobs'
 import { JobDetail } from '../components/JobDetail'
@@ -55,6 +57,7 @@ export function Completed() {
                   <div className="num truncate text-[12px] text-muted">{bytes(j.totalBytes)} · {ago(j.completedAt)}{j.group ? ` · ${j.group}` : ''}</div>
                 </div>
                 <div className="flex gap-0.5" onClick={e => e.stopPropagation()}>
+                  {desktop.available() && isPlayable(j.filePath) && <IconButton label="Play in FluxGet" onClick={() => { player('openJob', { jobId: j.id, path: j.filePath, title: displayName(j) }); navigate('player') }}><MonitorPlay size={15} /></IconButton>}
                   <IconButton label="Open" onClick={() => jobActions.open(j)}><ExternalLink size={15} /></IconButton>
                   <IconButton label="Show in folder" onClick={() => jobActions.open(j, true)}><FolderOpen size={15} /></IconButton>
                 </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { CalendarClock, CheckCheck, Clapperboard, Download, LayoutGrid, Magnet, Plus, Settings as Cog, WifiOff } from 'lucide-react'
+import { CalendarClock, CheckCheck, Clapperboard, Download, LayoutGrid, Magnet, MonitorPlay, Plus, Settings as Cog, WifiOff } from 'lucide-react'
 import { onCompleted, setUpdate, useStore } from './store'
 import { navigate, useRoute, type Page } from './router'
 import { speed } from './format'
@@ -16,11 +16,14 @@ import { Torrents } from './pages/Torrents'
 import { Scheduler } from './pages/Scheduler'
 import { Completed } from './pages/Completed'
 import { SettingsPage } from './pages/Settings'
+import { PlayerPage } from './pages/Player'
+import { setPlayerState } from './player'
 
 const NAV: { page: Page; label: string; icon: ReactNode }[] = [
   { page: 'overview', label: 'Overview', icon: <LayoutGrid size={17} /> },
   { page: 'downloads', label: 'Downloads', icon: <Download size={17} /> },
   { page: 'media', label: 'Media', icon: <Clapperboard size={17} /> },
+  { page: 'player', label: 'Player', icon: <MonitorPlay size={17} /> },
   { page: 'torrents', label: 'Torrents', icon: <Magnet size={17} /> },
   { page: 'scheduler', label: 'Scheduler', icon: <CalendarClock size={17} /> },
   { page: 'completed', label: 'Completed', icon: <CheckCheck size={17} /> },
@@ -76,6 +79,8 @@ export function App() {
     desktop.send({ type: 'theme', dark: document.documentElement.classList.contains('dark') })
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'update') { setUpdate(e.data); return }
+      if (e.data?.type === 'playerState') { setPlayerState(e.data.state); return }
+      if (e.data?.type === 'navigate' && typeof e.data.page === 'string') { navigate(e.data.page); return }
       if (typeof e.data?.url !== 'string') return
       if (e.data.type === 'add') openAdd(e.data.url)
       if (e.data.type === 'media') navigate('media', { url: e.data.url })
@@ -135,6 +140,7 @@ export function App() {
           {page === 'overview' && <Overview openAdd={openAdd} />}
           {page === 'downloads' && <Downloads openAdd={openAdd} />}
           {page === 'media' && <Media />}
+          {page === 'player' && <PlayerPage />}
           {page === 'torrents' && <Torrents />}
           {page === 'scheduler' && <Scheduler />}
           {page === 'completed' && <Completed />}
@@ -143,7 +149,7 @@ export function App() {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden" aria-label="Main">
-        {NAV.filter(n => n.page !== 'scheduler').map(n => (
+        {NAV.filter(n => n.page !== 'scheduler' && n.page !== 'torrents').map(n => (
           <button key={n.page} onClick={() => navigate(n.page)} aria-current={page === n.page ? 'page' : undefined}
             className={cx('flex flex-1 flex-col items-center justify-center gap-1 text-[10.5px] font-medium', page === n.page ? 'text-accent' : 'text-muted')}>
             {n.icon}{n.label}

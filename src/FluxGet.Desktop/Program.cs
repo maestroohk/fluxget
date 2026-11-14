@@ -8,7 +8,10 @@ namespace FluxGet.Desktop;
 
 internal static class Program
 {
-    public const int Port = 17890;
+    public static int Port { get; private set; } = 17890;
+    public static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
+    public static long StartupMs { get; set; } = -1;
+    public static string[]? SelfTest { get; private set; }
 
     [STAThread]
     private static void Main(string[] args)
@@ -20,8 +23,14 @@ internal static class Program
                 Protocol.Unregister();
             })
             .Run();
-        using var mutex = new Mutex(true, @"Local\FluxGet.Desktop", out var first);
-        var argument = args.FirstOrDefault();
+        var selfTestAt = Array.IndexOf(args, "--player-selftest");
+        if (selfTestAt >= 0 && args.Length > selfTestAt + 2)
+        {
+            SelfTest = [args[selfTestAt + 1], args[selfTestAt + 2]];
+            Port = 17899;
+        }
+        using var mutex = new Mutex(true, SelfTest is null ? @"Local\FluxGet.Desktop" : @"Local\FluxGet.SelfTest", out var first);
+        var argument = SelfTest is null ? args.FirstOrDefault() : null;
         if (!first)
         {
             ForwardToRunningInstance(argument);
@@ -29,17 +38,19 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
-        Protocol.Register();
+        _ = Task.Run(Protocol.Register);
 
         WebApplication server;
+        Task started;
         try
         {
             server = FluxGetServer.Build(args.Where(a => a.StartsWith("--")).ToArray(), o =>
             {
                 o.Mode = HostMode.Desktop;
                 o.Port = Port;
+                if (SelfTest is not null) o.DataDirectory = Path.Combine(SelfTest[1], "data");
             });
-            server.StartAsync().GetAwaiter().GetResult();
+            started = server.StartAsync();
         }
         catch (Exception e)
         {
@@ -47,7 +58,7 @@ internal static class Program
             return;
         }
 
-        var form = new MainForm(server, argument);
+        var form = new MainForm(server, argument, started);
         Application.Run(form);
         server.StopAsync().GetAwaiter().GetResult();
         server.DisposeAsync().AsTask().GetAwaiter().GetResult();

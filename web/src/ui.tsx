@@ -107,11 +107,12 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
+    ;(window as any).chrome?.webview?.postMessage({ type: 'player', cmd: 'obscured', value: true })
     const prev = document.activeElement as HTMLElement | null
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', key)
     setTimeout(() => (ref.current?.querySelector<HTMLElement>('textarea,input:not([type=hidden]),select') ?? ref.current?.querySelector<HTMLElement>('button'))?.focus(), 10)
-    return () => { window.removeEventListener('keydown', key); prev?.focus() }
+    return () => { window.removeEventListener('keydown', key); prev?.focus(); (window as any).chrome?.webview?.postMessage({ type: 'player', cmd: 'obscured', value: false }) }
   }, [open, onClose])
   if (!open) return null
   return (

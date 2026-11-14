@@ -10,23 +10,34 @@ using Microsoft.Web.WebView2.WinForms;
 
 namespace FluxGet.Desktop;
 
-internal sealed class MainForm : Form
+internal sealed partial class MainForm : Form
 {
     private readonly WebApplication _server;
     private readonly JobManager _manager;
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(12, 13, 15) };
     private readonly NotifyIcon _tray;
-    private readonly Notifier _notifier;
+    private Notifier? _notifier;
+    private readonly Task _serverStarted;
+    private Splash? _splash;
+    private long _shownMs;
     private readonly Updates _updates = new();
+    private CoreWebView2Environment? _env;
+    private Player.PlayerController? _player;
+    private Player.FullscreenForm? _fullscreen;
+    private Player.MiniForm? _mini;
+    private Rectangle _surface;
+    private bool _surfaceVisible;
+    private bool _surfaceObscured;
     private bool _updateLoopStarted;
     private readonly string _origin = $"http://127.0.0.1:{Program.Port}";
     private string? _pendingArgument;
     private bool _exiting;
     private bool _hintShown;
 
-    public MainForm(WebApplication server, string? argument)
+    public MainForm(WebApplication server, string? argument, Task serverStarted)
     {
         _server = server;
+        _serverStarted = serverStarted;
         _manager = server.Services.GetRequiredService<JobManager>();
         _pendingArgument = argument;
         Text = "FluxGet";
@@ -36,11 +47,18 @@ internal sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(12, 13, 15);
         Controls.Add(_web);
+        _splash = new Splash(SystemUsesDarkTheme());
+        Controls.Add(_splash);
+        _splash.BringToFront();
 
         _tray = new NotifyIcon { Icon = Icon, Text = "FluxGet", Visible = true, ContextMenuStrip = BuildTrayMenu() };
         _tray.DoubleClick += (_, _) => ShowWindow();
-        _notifier = new Notifier(this, ShowWindow, id => _manager.Find(id), () => _ = ApplyUpdateAsync());
-        Branding.Ensure();
+        Shown += (_, _) =>
+        {
+            _shownMs = Program.Clock.ElapsedMilliseconds;
+            _notifier = new Notifier(this, ShowWindow, id => _manager.Find(id), () => _ = ApplyUpdateAsync());
+            _ = Task.Run(Branding.Ensure);
+        };
 
         _manager.JobChanged += OnJobChanged;
         server.Services.GetRequiredService<AppSignals>().ActivateRequested += arg => BeginInvoke(() => Activate(arg));
@@ -80,6 +98,7 @@ internal sealed class MainForm : Form
             Close();
             return;
         }
+        _env = env;
         await _web.EnsureCoreWebView2Async(env);
         var core = _web.CoreWebView2;
         var settings = core.Settings;
@@ -100,6 +119,11 @@ internal sealed class MainForm : Form
         {
             if (e.Uri.StartsWith(_origin + "/", StringComparison.OrdinalIgnoreCase) || e.Uri == _origin) return;
             e.Cancel = true;
+            if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var dropped) && dropped.IsFile)
+            {
+                PlayFiles([dropped.LocalPath]);
+                return;
+            }
             OpenExternal(e.Uri);
         };
         core.NewWindowRequested += (_, e) =>
@@ -110,10 +134,12 @@ internal sealed class MainForm : Form
         core.WebMessageReceived += OnWebMessage;
         core.NavigationCompleted += (_, _) =>
         {
+            _ = Task.Delay(6000).ContinueWith(_ => BeginInvoke(HideSplash), TaskScheduler.Default);
             if (!_updateLoopStarted)
             {
                 _updateLoopStarted = true;
-                _ = UpdateLoopAsync();
+                if (Program.SelfTest is { } st) _ = RunSelfTestAsync(st[0], st[1]);
+                else _ = UpdateLoopAsync();
             }
             if (_pendingArgument is { } arg)
             {
@@ -121,6 +147,17 @@ internal sealed class MainForm : Form
                 Activate(arg);
             }
         };
+        try
+        {
+            await _serverStarted;
+        }
+        catch (Exception e)
+        {
+            MessageBox.Show($"FluxGet could not start its download service on port {Program.Port}.\n\n{e.Message}", "FluxGet", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            _exiting = true;
+            Close();
+            return;
+        }
         core.Navigate(_origin + "/");
     }
 
@@ -156,6 +193,12 @@ internal sealed class MainForm : Form
                 break;
             case "applyUpdate":
                 _ = ApplyUpdateAsync();
+                break;
+            case "player":
+                OnPlayerMessage(doc.RootElement);
+                break;
+            case "uiReady":
+                HideSplash();
                 break;
             case "theme":
                 SetDarkTitleBar(doc.RootElement.TryGetProperty("dark", out var d) && d.GetBoolean());
@@ -198,7 +241,7 @@ internal sealed class MainForm : Form
         var wasReady = _updates.ReadyVersion is not null;
         var (state, version, error) = await _updates.CheckAsync();
         PostToUi(new { type = "update", state, version, current = _updates.CurrentVersion, error });
-        if (state == "ready" && !wasReady && version is not null) _notifier.UpdateReady(version);
+        if (state == "ready" && !wasReady && version is not null) _notifier?.UpdateReady(version);
     }
 
     private async Task ApplyUpdateAsync()
@@ -214,6 +257,186 @@ internal sealed class MainForm : Form
     {
         if (InvokeRequired) { BeginInvoke(() => PostToUi(message)); return; }
         _web.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(message, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    }
+
+    private void HideSplash()
+    {
+        if (_splash is null) return;
+        if (Program.StartupMs < 0)
+        {
+            Program.StartupMs = Program.Clock.ElapsedMilliseconds;
+            if (Environment.GetEnvironmentVariable("FLUXGET_STARTUP_PROBE") is { Length: > 0 } probe)
+                File.WriteAllText(probe, $"{{\"windowShownMs\":{_shownMs},\"uiReadyMs\":{Program.StartupMs}}}");
+        }
+        var splash = _splash;
+        _splash = null;
+        Controls.Remove(splash);
+        splash.Dispose();
+    }
+
+    private static bool SystemUsesDarkTheme()
+    {
+        try { return Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")?.GetValue("AppsUseLightTheme") is not 1; }
+        catch (Exception) { return true; }
+    }
+
+    private Player.PlayerController Playback
+    {
+        get
+        {
+            if (_player is not null) return _player;
+            _player = new Player.PlayerController(this, _server.Services.GetRequiredService<JobStore>());
+            var tokens = _server.Services.GetRequiredService<PreviewTokens>();
+            _player.PreviewUrlFactory = id => Host.PlayerEndpoints.PreviewInfo(_manager.Find(id)!) is { Available: true }
+                ? $"{_origin}/preview/{id}?t={tokens.Issue(id)}" : null;
+            _player.AddSink(json => PostRaw(json));
+            _player.ModeRequested += SetPlayerMode;
+            _player.View.Parent = this;
+            _player.View.BringToFront();
+            _player.View.DoubleClick += (_, _) => SetPlayerMode(Player.PlayerMode.Fullscreen);
+            _player.View.MouseClick += (_, me) => { if (me.Button == MouseButtons.Left) _player.Toggle(); };
+            _player.View.DragEnter += (_, de) => de.Effect = de.Data?.GetDataPresent(DataFormats.FileDrop) == true ? DragDropEffects.Copy : DragDropEffects.None;
+            _player.View.DragDrop += (_, de) => { if (de.Data?.GetData(DataFormats.FileDrop) is string[] files) PlayFiles(files); };
+            return _player;
+        }
+    }
+
+    private static readonly string[] SubtitleExtensions = [".srt", ".ass", ".ssa", ".vtt", ".sub"];
+
+    private void PlayFiles(IEnumerable<string> files)
+    {
+        var list = files.Where(f => File.Exists(f)).ToList();
+        if (list.Count == 0) return;
+        var subtitles = list.Where(f => SubtitleExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase)).ToList();
+        if (subtitles.Count > 0 && _player?.HasMedia == true)
+        {
+            foreach (var sub in subtitles) _player.Handle(JsonDocument.Parse(JsonSerializer.Serialize(new { cmd = "addSubtitleFile", path = sub })).RootElement);
+            list = list.Except(subtitles).ToList();
+            if (list.Count == 0) return;
+        }
+        Playback.Open(list.Select(f => new Player.QueueItem(f, Path.GetFileNameWithoutExtension(f), null, false)));
+        PostToUi(new { type = "navigate", page = "player" });
+        ShowWindow();
+    }
+
+    private void OnPlayerMessage(JsonElement msg)
+    {
+        var cmd = msg.TryGetProperty("cmd", out var c) ? c.GetString() : null;
+        switch (cmd)
+        {
+            case "surface":
+                if (_player is null && !(msg.TryGetProperty("visible", out var v0) && v0.GetBoolean())) return;
+                var dpr = msg.GetProperty("dpr").GetDouble();
+                _surface = new Rectangle(
+                    _web.Left + (int)Math.Round(msg.GetProperty("x").GetDouble() * dpr),
+                    _web.Top + (int)Math.Round(msg.GetProperty("y").GetDouble() * dpr),
+                    (int)Math.Round(msg.GetProperty("w").GetDouble() * dpr),
+                    (int)Math.Round(msg.GetProperty("h").GetDouble() * dpr));
+                _surfaceVisible = msg.GetProperty("visible").GetBoolean();
+                ApplySurface();
+                Playback.Push();
+                return;
+            case "obscured":
+                _surfaceObscured = msg.TryGetProperty("value", out var o) && o.GetBoolean();
+                ApplySurface();
+                return;
+            case "openDialog":
+                using (var dialog = new OpenFileDialog
+                {
+                    Title = "Open media",
+                    Multiselect = true,
+                    Filter = "Media files|*.mp4;*.m4v;*.mkv;*.webm;*.mov;*.avi;*.wmv;*.flv;*.ts;*.m2ts;*.mpg;*.mpeg;*.3gp;*.ogv;*.mp3;*.m4a;*.aac;*.opus;*.ogg;*.flac;*.wav;*.wma;*.mka|All files|*.*"
+                })
+                {
+                    if (dialog.ShowDialog(this) == DialogResult.OK)
+                    {
+                        var append = msg.TryGetProperty("append", out var ap) && ap.GetBoolean();
+                        Playback.Open(dialog.FileNames.Select(f => new Player.QueueItem(f, Path.GetFileNameWithoutExtension(f), null, false)), append);
+                    }
+                }
+                return;
+            case "subtitleDialog":
+                using (var dialog = new OpenFileDialog { Title = "Add subtitles", Filter = "Subtitles|*.srt;*.ass;*.ssa;*.vtt;*.sub;*.idx|All files|*.*" })
+                {
+                    if (dialog.ShowDialog(this) == DialogResult.OK)
+                        Playback.Handle(JsonDocument.Parse(JsonSerializer.Serialize(new { cmd = "addSubtitleFile", path = dialog.FileName })).RootElement);
+                }
+                return;
+            case "close":
+                _player?.Close();
+                SetPlayerMode(Player.PlayerMode.Embedded);
+                return;
+        }
+        Playback.Handle(msg);
+    }
+
+    private void ApplySurface()
+    {
+        if (_player is null || _player.Mode != Player.PlayerMode.Embedded) return;
+        var view = _player.View;
+        if (view.Parent != this) view.Parent = this;
+        view.Bounds = _surface;
+        view.Visible = _surfaceVisible && !_surfaceObscured && _surface.Width > 0 && _surface.Height > 0;
+        if (view.Visible) view.BringToFront();
+    }
+
+    public void SetPlayerMode(Player.PlayerMode mode)
+    {
+        var player = Playback;
+        if (player.Mode == mode) return;
+        if (player.Mode == Player.PlayerMode.Fullscreen && _fullscreen is not null)
+        {
+            _fullscreen.Release();
+            var fs = _fullscreen;
+            _fullscreen = null;
+            fs.Close();
+        }
+        if (player.Mode == Player.PlayerMode.Mini && _mini is not null)
+        {
+            _mini.Release();
+            var mini = _mini;
+            _mini = null;
+            mini.Close();
+        }
+        player.Mode = mode;
+        switch (mode)
+        {
+            case Player.PlayerMode.Fullscreen when _env is not null:
+                var overlay = new Player.OverlayForm(player, _env, _origin + "/#/player-overlay", _server.Services.GetRequiredService<AccessKeys>().SessionKey);
+                _fullscreen = new Player.FullscreenForm(player, overlay, Screen.FromControl(this)) { Icon = Icon };
+                _fullscreen.Commands += OnOverlayCommand;
+                _fullscreen.ExitRequested += () => SetPlayerMode(Player.PlayerMode.Embedded);
+                _fullscreen.Adopt();
+                _fullscreen.Show();
+                break;
+            case Player.PlayerMode.Mini:
+                _mini = new Player.MiniForm(player, Icon);
+                _mini.ReturnRequested += () => { SetPlayerMode(Player.PlayerMode.Embedded); ShowWindow(); PostToUi(new { type = "navigate", page = "player" }); };
+                _mini.Adopt();
+                _mini.Show();
+                break;
+            default:
+                player.Mode = Player.PlayerMode.Embedded;
+                ApplySurface();
+                if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+                Activate();
+                break;
+        }
+        player.RefreshVideoOutput();
+        player.Push();
+    }
+
+    private void OnOverlayCommand(JsonElement msg)
+    {
+        var cmd = msg.TryGetProperty("cmd", out var c) ? c.GetString() : null;
+        if (cmd is "openDialog" or "subtitleDialog" or "close") { SetPlayerMode(Player.PlayerMode.Embedded); OnPlayerMessage(msg); return; }
+        Playback.Handle(msg);
+    }
+
+    private void PostRaw(string json)
+    {
+        if (InvokeRequired) { BeginInvoke(() => PostRaw(json)); return; }
+        _web.CoreWebView2?.PostWebMessageAsJson(json);
     }
 
     private static readonly System.Text.RegularExpressions.Regex MediaSites = new(@"(^|\.)(youtube\.com|youtu\.be|facebook\.com|fb\.watch|instagram\.com|tiktok\.com|x\.com|twitter\.com|reddit\.com|vimeo\.com|twitch\.tv|dailymotion\.com|soundcloud\.com|bilibili\.com)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -232,6 +455,7 @@ internal sealed class MainForm : Form
 
     private void ShowWindow()
     {
+        if (_player?.Mode == Player.PlayerMode.Mini) return;
         Show();
         if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
         Activate();
@@ -242,9 +466,9 @@ internal sealed class MainForm : Form
     {
         if (!_manager.Settings.NotifyOnComplete) return;
         if (job.Status == JobStatus.Completed && job.CompletedAt is { } done && DateTime.UtcNow - done < TimeSpan.FromSeconds(5))
-            BeginInvoke(() => _notifier.Completed(job));
+            BeginInvoke(() => _notifier?.Completed(job));
         else if (job.Status == JobStatus.NeedsAttention)
-            BeginInvoke(() => _notifier.NeedsAttention(job));
+            BeginInvoke(() => _notifier?.NeedsAttention(job));
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -271,11 +495,14 @@ internal sealed class MainForm : Form
             if (!_hintShown)
             {
                 _hintShown = true;
-                _notifier.Info("FluxGet is still running", "Downloads continue in the background. Right-click the tray icon to quit.");
+                _notifier?.Info("FluxGet is still running", "Downloads continue in the background. Right-click the tray icon to quit.");
             }
             return;
         }
         _manager.JobChanged -= OnJobChanged;
+        _fullscreen?.Close();
+        _mini?.Close();
+        _player?.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
         base.OnFormClosing(e);

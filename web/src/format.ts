@@ -56,6 +56,9 @@ export function extension(name: string | null) {
   return m ? m[1].toLowerCase() : ''
 }
 
+const PLAYABLE = /\.(mp4|m4v|mkv|webm|mov|avi|wmv|flv|ts|m2ts|mpg|mpeg|3gp|ogv|mp3|m4a|aac|opus|ogg|oga|flac|wav|wma|mka)$/i
+export const isPlayable = (name: string | null | undefined) => !!name && PLAYABLE.test(name)
+
 export type Tone = 'accent' | 'ok' | 'warn' | 'bad' | 'muted' | 'info'
 
 export const statusInfo: Record<JobStatus, { label: string; tone: Tone }> = {

@@ -8,11 +8,21 @@
     <AssemblyName>FluxGet</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
+  <PropertyGroup>
+    <VlcWindowsX86Enabled>false</VlcWindowsX86Enabled>
+    <VlcWindowsArm64Enabled>false</VlcWindowsArm64Enabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <VlcWindowsX64IncludeFiles Include="libvlc.dll;libvlccore.dll;hrtfs\%2A%2A;plugins\%2A%2A" />
+    <VlcWindowsX64ExcludeFiles Include="plugins\stream_out\%2A%2A;plugins\access_output\%2A%2A;plugins\visualization\%2A%2A;plugins\gui\%2A%2A;plugins\lua\%2A%2A;plugins\services_discovery\%2A%2A;plugins\codec\libx264_plugin.dll;plugins\codec\libx26410b_plugin.dll;plugins\codec\libx265_plugin.dll;plugins\codec\libtwolame_plugin.dll;plugins\codec\libqsv_plugin.dll;plugins\video_filter\libpostproc_plugin.dll" />
+  </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageReference Include="Velopack" Version="1.2.161" />
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+    <PackageReference Include="LibVLCSharp.WinForms" Version="3.10.2" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FluxGet.Host\FluxGet.Host.csproj" />
