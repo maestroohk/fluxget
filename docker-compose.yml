@@ -14,7 +14,7 @@ services:
       - ./downloads:/downloads
     read_only: true
     tmpfs:
-      - /tmp
+      - /tmp:exec,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:

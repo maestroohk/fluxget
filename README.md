@@ -1,0 +1,106 @@
+# FluxGet
+
+A fast, reliable download manager for Windows: segmented HTTP downloads that survive crashes, media downloads from video sites, BitTorrent, and a browser extension — in one calm, modern app.
+
+- **Direct downloads** split across connections when the server allows it, resume safely after pause, restart, crash or network loss, and never mix bytes from two versions of a file.
+- **Media** from YouTube and other sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp): pick a real resolution, container or audio format; whole playlists and channels; audio extraction and conversion with FFmpeg (stream copy when no re-encode is needed).
+- **Torrents** via [MonoTorrent](https://github.com/alanmcgovern/monotorrent): magnet links and .torrent files, file selection, peers, upload limit, seed ratio.
+- **Browser extension** (Chrome, Edge) that sends links, captured downloads and page videos to FluxGet after a one-time pairing.
+- **Queue, schedule and bandwidth control**: concurrency limit, priorities, time windows, global and per-download speed limits, checksum verification.
+
+Architecture, diagrams and decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DECISIONS.md](docs/DECISIONS.md). Measured performance: [bench/results.md](bench/results.md).
+
+## Run it
+
+Requirements for development: .NET SDK 10, Node.js 22, Windows 10/11 for the desktop app (the engine and headless host also run on Linux).
+
+```bash
+cd web && npm ci && npm run build && cd ..
+dotnet run --project src/FluxGet.Desktop
+```
+
+The desktop app starts its local service on `127.0.0.1:17890`, opens the UI and signs it in automatically. Closing the window keeps downloads running in the tray.
+
+Media downloads need `yt-dlp`, `ffmpeg`/`ffprobe` and a JavaScript runtime (`deno`, or `node`) on `PATH` or in `tools/bin`. `scripts/fetch-tools.ps1` downloads checksum-verified copies into `tools/bin`; the installer bundles them.
+
+Headless (web interface in a browser):
+
+```bash
+dotnet run --project src/FluxGet.Host
+```
+
+It prints the address and an access key to paste into the login screen. Add `--FluxGet:DevDashboard=true` to serve the development progress dashboard at `/dev/`.
+
+For UI work, run `npm run dev` in `web/` (Vite on port 5173, proxied to the host) and start the host with `--FluxGet:DevDashboard=true` so the dev origin is accepted.
+
+## Windows installer
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/package.ps1 -Version 0.1.0
+```
+
+Produces a per-user Velopack installer (`artifacts/releases/FluxGet-win-Setup.exe`) with a self-contained .NET runtime and the bundled tools. Builds are not code-signed yet, so Windows SmartScreen will warn on first run.
+
+## Browser extension
+
+1. Open `chrome://extensions` (or `edge://extensions`), enable Developer mode, choose **Load unpacked** and select the `extension/` folder.
+2. Click the FluxGet toolbar icon → **Connect**. FluxGet shows a 6-digit code; type it into the extension.
+
+Out of the box the extension only gets the context menu, the toolbar popup and (optional) download capture. Detecting media files on pages, the on-video download button and passing site cookies each ask for extra permission when you turn them on. Cookies are sent only for the URL being downloaded and are kept in memory, never written to disk or logs.
+
+## Remote worker (Docker)
+
+```bash
+cp .env.example .env   # set FLUXGET_ACCESS_TOKEN to a long random secret
+docker compose up -d --build
+```
+
+Serves the web UI on `127.0.0.1:8080` (put a TLS reverse proxy in front for remote access). Hosted mode blocks downloads from private and loopback addresses (SSRF protection: direct downloads are checked on every connection, including after redirects; media links are checked before yt-dlp runs, but redirects inside yt-dlp are not), restricts files to `/downloads`, runs as a non-root user with a read-only root filesystem, and requires the access token. It is single-user by design.
+
+## Supported sites
+
+Verified against live sites on 2026-11-14:
+
+| Source | Status |
+|---|---|
+| Direct HTTP/HTTPS files | Verified: segmented download from a CDN with SHA-256 check (nodejs.org), resume, adaptive connection limits |
+| YouTube videos | Verified: real format list, 360p/720p MP4, H.264 preferred for MP4 compatibility |
+| YouTube audio | Verified: MP3 192 kbps with cover art, M4A by stream copy, Opus, FLAC |
+| YouTube channels/playlists | Verified: paged listing (136 videos in pages of 100) and per-item jobs |
+| Vimeo | Requires signing in: yt-dlp needs browser cookies; use the extension with "Pass my site cookies" |
+| Facebook, Instagram, TikTok, X, Reddit, Twitch, others | Supported by yt-dlp; not yet verified in FluxGet. Many posts require a signed-in browser session. |
+| BitTorrent | Verified: archive.org public-domain torrent, file selection, completion and ratio stop |
+
+FluxGet never bypasses DRM, paywalls or sign-in. Private media works only when your own browser session is allowed to view it. Watermark-free downloads are only possible when the site itself serves such a file.
+
+## Security model
+
+- The local API listens on loopback only. Every call needs a token; the desktop UI uses an HttpOnly, SameSite=Strict cookie injected by the app.
+- Web pages cannot drive it: requests carrying an `http(s)` Origin are rejected, the Host header must be `127.0.0.1`/`localhost` (DNS-rebinding defence), and pairing requires the code shown in the app. Extension tokens are stored hashed and can be revoked in Settings.
+- Subprocesses (yt-dlp, FFmpeg) are started with argument lists, never a shell. File names are sanitised and confined to the download folder.
+- CI runs NuGet and npm vulnerability scans.
+
+BitTorrent shares your IP address with peers. FluxGet does not provide anonymity.
+
+## Tests
+
+```bash
+dotnet test tests/FluxGet.Engine.Tests
+cd e2e && npm ci && node extension.test.mjs
+```
+
+The engine tests run against a deliberately misbehaving local HTTP server (ignored ranges, wrong `Content-Range`, dropped connections, throttling, connection limits, changed files, expired links). The e2e test loads the real extension into Microsoft Edge and drives pairing, download capture and the popup against a real FluxGet host.
+
+`scripts/verify.ps1` runs everything and records the result in `docs/build-status.json`, which the progress dashboard reads.
+
+## Known limitations
+
+- Expiring or cookie-protected links cannot resume after an app restart, because cookies are deliberately kept in memory only. Use "Refresh address" with a new link.
+- Some servers cap connections per IP and temporarily block clients that exceed it. FluxGet backs off, lowers its connection count and remembers the cap per host, but the first attempt still uses the configured count (default 8).
+- MonoTorrent 3.0.2 creates deselected files at full length when they share a piece with a selected file; FluxGet deletes deselected files once the torrent finishes.
+- Media progress for video+audio downloads grows as yt-dlp starts each stream, because the second stream's size is only known when it starts.
+- Firefox is not packaged yet; the extension uses only standard WebExtension APIs.
+
+## License
+
+MIT. Third-party components and their licences: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

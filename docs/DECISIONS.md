@@ -41,3 +41,12 @@ yt-dlp (Unlicense) and Deno (MIT) are bundled. FFmpeg is bundled as an LGPL buil
 
 ## D-012 Defaults chosen by measurement
 Default segment count and minimum split size come from `bench/` results recorded in the README, not from intuition. More segments are not assumed to be faster.
+
+## D-013 Adaptive connection count and Happy Eyeballs (2026-11-14)
+Found while testing against real mirrors: OVH proof servers answer 429 and then stall all traffic from an IP that opens more than ~3 connections; and on this network IPv6 routes to some hosts black-hole, which made .NET's sequential connect hang for the full timeout while curl fell back to IPv4. Decision: a worker that gets 429/503/a stall before its first byte gives its segment back while other connections are healthy, the job's connection cap drops, and the cap is remembered per host for the session. Connections use an RFC 8305-style connector (IPv6 and IPv4 attempts staggered by 250 ms, first success wins), which is also where the SSRF filter lives.
+
+## D-014 Browser e2e runs on installed Edge (2026-11-14)
+Playwright's bundled Chromium fails to start on the development machine (Windows side-by-side configuration error). Edge accepts `--load-extension` under Playwright, exercises the real MV3 runtime and is present on every Windows CI image, so the extension e2e test targets the `msedge` channel (override with `E2E_CHANNEL`).
+
+## D-015 Media output names carry the real quality (2026-11-14)
+A downloaded 360p test video was named "...4K..." because the 4K is part of the YouTube title. File names now include the downloaded height (`[720p]`) or audio bitrate (`[192k]`), taken from the actual stream, so different quality choices never overwrite each other and the name cannot mislead.

@@ -1,8 +1,8 @@
-﻿param(
+param(
     [string]$Destination = (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools/bin'),
     [string]$YtDlpVersion = '2026.10.26',
     [string]$DenoVersion = '2.9.8',
-    [string]$FfmpegAsset = 'ffmpeg-n9.0-latest-win64-lgpl-9.0.zip'
+    [string]$FfmpegAsset = 'ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip'
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -37,7 +37,8 @@ try {
         "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256" $FfmpegAsset $ffZip
     Expand-Archive $ffZip -DestinationPath $work -Force
     $ffRoot = Get-ChildItem $work -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'bin/ffmpeg.exe') } | Select-Object -First 1
-    Copy-Item (Join-Path $ffRoot.FullName 'bin/ffmpeg.exe'), (Join-Path $ffRoot.FullName 'bin/ffprobe.exe') $Destination -Force
+    Remove-Item (Join-Path $Destination 'ffmpeg.exe'), (Join-Path $Destination 'ffprobe.exe') -ErrorAction SilentlyContinue
+    Get-ChildItem (Join-Path $ffRoot.FullName 'bin') | Where-Object { $_.Name -ne 'ffplay.exe' } | Copy-Item -Destination $Destination -Force
     Copy-Item (Join-Path $ffRoot.FullName 'LICENSE.txt') (Join-Path $Destination 'FFMPEG-LICENSE.txt') -Force
     Write-Host "Tools ready in $Destination"
 }

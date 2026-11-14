@@ -1,6 +1,6 @@
 {
   "updated": "2026-11-14",
-  "currentMilestone": "M1",
+  "currentMilestone": "M6",
   "rules": "Completion = verified story points / total story points. A story counts only when status is 'verified' and every acceptance criterion has evidence (a passing test name or a recorded manual check). Points are fixed when a story is created.",
   "milestones": [
     {
@@ -57,7 +57,7 @@
     },
     {
       "id": "R5",
-      "text": "GitHub publication blocked until the GitHub CLI is authenticated on this machine.",
+      "text": "GitHub publication blocked until the GitHub CLI is authenticated on this machine (gh auth login).",
       "severity": "medium"
     },
     {
@@ -68,6 +68,16 @@
     {
       "id": "R7",
       "text": "IPv6 routes that black-hole connections stalled .NET's sequential connect; fixed with a Happy Eyeballs connector, needs testing on IPv6-only networks.",
+      "severity": "low"
+    },
+    {
+      "id": "R8",
+      "text": "Installer is 200 MB, dominated by Deno (94 MB) and FFmpeg DLLs (148 MB). yt-dlp needs a JS runtime for YouTube; a smaller runtime would need re-verification.",
+      "severity": "low"
+    },
+    {
+      "id": "R9",
+      "text": "MonoTorrent 3.0.2 has no sparse-file option: deselected files sharing a piece are created at full length until the torrent finishes.",
       "severity": "low"
     }
   ],
@@ -177,11 +187,11 @@
         "Persisted offsets never exceed flushed data",
         "Final hash matches after kill/restart"
       ],
-      "status": "in_progress",
+      "status": "verified",
       "evidence": [
-        "test: Interrupted_download_recovers_after_restart (graceful restart)",
-        "manual 2026-11-14: host force-killed mid-download, job reloaded at 78.6 MB and resumed",
-        "pending: forced-kill run with final hash check (bench)"
+        "bench: process force-killed at 103 MiB of 256 MiB; restart resumed from 97 MiB (one 2 s checkpoint lost) in 168 ms; SHA-256 matches (bench/results.md)",
+        "test: Interrupted_download_recovers_after_restart",
+        "test: Pause_and_resume_continues_from_persisted_offsets (claim pointers rebuilt from persisted data)"
       ]
     },
     {
@@ -354,8 +364,10 @@
         "Working set stays under 250 MB during download",
         "Measured throughput recorded"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "bench: 4 GiB, 8 connections, SHA-256 matches, peak working set 100 MB, 216 MiB/s on idle machine (disk ceiling 158 MiB/s sustained)"
+      ]
     },
     {
       "id": "FG-010",
@@ -396,10 +408,10 @@
         "Updates at least twice per second",
         "List virtualised for 10k jobs"
       ],
-      "status": "in_progress",
+      "status": "verified",
       "evidence": [
-        "manual 2026-11-14: Downloads screen showed live 9.0 MB/s, 8/8 connections, ETA from SSE ticks",
-        "pending: 10k-job virtualisation check"
+        "manual 2026-11-14: live speed/ETA/connections from SSE in Downloads screen",
+        "manual 2026-11-14: 10,000 queued jobs (created via API in 3.8 s; /api/jobs 0.44 s); Downloads screen shows \"All 10000\" while rendering 18 DOM rows over a 720,000 px virtual list"
       ]
     },
     {
@@ -417,8 +429,11 @@
         "Each action reflected within 1 s",
         "Remove optionally deletes file"
       ],
-      "status": "in_progress",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "code: pause/resume/retry/restart/remove in row and detail drawer",
+        "unverified: UI clicks not automated yet"
+      ]
     },
     {
       "id": "FG-022",
@@ -436,8 +451,10 @@
         "Per-connection state shown",
         "Speed history chart"
       ],
-      "status": "in_progress",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "code: segment map, per-segment table, speed sparkline in detail drawer"
+      ]
     },
     {
       "id": "FG-023",
@@ -455,8 +472,12 @@
         "Close to tray, downloads continue",
         "UI authenticated automatically"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "manual 2026-11-14: desktop app starts host in-process, WebView2 signed in via HttpOnly cookie (screenshot)",
+        "manual 2026-11-14: second launch with fluxget://add forwarded link to running window and exited",
+        "unverified: close-to-tray behaviour"
+      ]
     },
     {
       "id": "FG-024",
@@ -473,8 +494,10 @@
         "Follows system, manual override persists",
         "WCAG AA contrast for text"
       ],
-      "status": "in_progress",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "code: light/dark tokens, system/light/dark switch, dark title bar sync"
+      ]
     },
     {
       "id": "FG-025",
@@ -491,8 +514,11 @@
         "Settings persist",
         "Changes apply without restart"
       ],
-      "status": "in_progress",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "test: Global_speed_limit_applies_across_downloads (settings applied without restart)",
+        "unverified: settings screen not driven in a browser test"
+      ]
     },
     {
       "id": "FG-026",
@@ -509,9 +535,9 @@
         "Totals are computed from the store",
         "Live aggregate speed"
       ],
-      "status": "in_progress",
+      "status": "verified",
       "evidence": [
-        "manual 2026-11-14: Overview shows totals and free space from /api/system"
+        "manual 2026-11-14: Overview shows live speed, active/queued, completed totals and free space from /api/system"
       ]
     },
     {
@@ -529,8 +555,10 @@
         "Windows toast/tray balloon on completion",
         "Can be disabled"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "code: tray balloon on completion / needs attention, toggle in settings"
+      ]
     },
     {
       "id": "FG-030",
@@ -548,12 +576,12 @@
         "Web pages cannot call the API (Origin/Host checks)",
         "Token stored hashed, revocable"
       ],
-      "status": "in_progress",
+      "status": "verified",
       "evidence": [
-        "test: Extension_pairs_downloads_and_can_be_revoked",
-        "test: Websites_are_rejected_even_with_a_token",
-        "test: Dns_rebinding_host_header_is_rejected",
-        "pending: real extension"
+        "e2e (Edge): Pairing with the code shown in FluxGet; wrong code rejected",
+        "e2e: Web page cannot start pairing (Origin check)",
+        "e2e: Revoked token returns the popup to pairing",
+        "test: Dns_rebinding_host_header_is_rejected"
       ]
     },
     {
@@ -572,8 +600,12 @@
         "Optional capture of browser downloads by size/type",
         "Referrer and cookies for that URL passed, kept in memory only"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "e2e (Edge): Browser download is captured and completed by FluxGet (browser copy cancelled, SHA-256 matches)",
+        "test: cookies/referrer forwarded but never returned by the API",
+        "unverified: context-menu entries (native menus are not automatable)"
+      ]
     },
     {
       "id": "FG-004",
@@ -592,8 +624,12 @@
         "Audio-only option",
         "Job appears in desktop app"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "e2e: extension token can call /api/media/analyze",
+        "code: popup quality list + audio-only",
+        "unverified: popup media flow on a live video tab"
+      ]
     },
     {
       "id": "FG-032",
@@ -609,8 +645,10 @@
       "criteria": [
         "Real progress from API"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "e2e (Edge): Popup lists live downloads from FluxGet"
+      ]
     },
     {
       "id": "FG-033",
@@ -628,8 +666,11 @@
         "Not shown on tiny or DRM (EME) videos",
         "No page-wide overlays"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "code: optional on-video button, skips videos <240x135 and EME (DRM) players",
+        "unverified"
+      ]
     },
     {
       "id": "FG-040",
@@ -646,8 +687,12 @@
         "No invented sizes/resolutions",
         "Clear error for unsupported/private media"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "manual 2026-11-14: YouTube analysis returns real formats and sizes (unknown sizes shown as unknown)",
+        "test: Video_options_prefer_direct_formats_with_known_size",
+        "test: Errors_are_explained (unsupported, private, sign-in, unavailable)"
+      ]
     },
     {
       "id": "FG-041",
@@ -665,8 +710,11 @@
         "Merging via FFmpeg with stream copy when possible",
         "Cancel kills process tree"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "manual 2026-11-14: 360p and 720p MP4 downloads, ffprobe confirms H.264 1280x720 60fps + AAC; file name carries [720p]",
+        "unverified: cancel kills yt-dlp process tree"
+      ]
     },
     {
       "id": "FG-007",
@@ -684,8 +732,12 @@
         "Select entries",
         "Each entry is its own job with progress"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "manual 2026-11-14: channel listing paged 100 + 36 = 136 entries",
+        "test: Playlist_entries_are_paged",
+        "unverified: downloading a whole playlist end to end"
+      ]
     },
     {
       "id": "FG-008",
@@ -703,8 +755,12 @@
         "Convert an already downloaded file",
         "Bitrate selectable"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "manual 2026-11-14: audio-only MP3 192 kbps with cover art",
+        "manual: MP4 -> M4A by stream copy (6ch AAC kept), MP4 -> Opus encode",
+        "manual (UI): Convert to audio from a YouTube link into MP3 + FLAC at once"
+      ]
     },
     {
       "id": "FG-042",
@@ -720,8 +776,10 @@
       "criteria": [
         "Platform matrix in README from real tests"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "README platform matrix from live tests on 2026-11-14 (YouTube verified, Vimeo needs sign-in, others marked unverified)"
+      ]
     },
     {
       "id": "FG-005",
@@ -739,8 +797,11 @@
         "File selection before/while downloading",
         "Pieces hash-verified"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "code: magnet add + file selection",
+        "unverified: magnet metadata fetch over DHT (tested with .torrent file)"
+      ]
     },
     {
       "id": "FG-050",
@@ -757,8 +818,10 @@
         "Upload via UI",
         "Downloads a legal test torrent"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "manual 2026-11-14: archive.org public-domain BigBuckBunny_124 .torrent uploaded via API, 59 MB MP4 selected of 420 MB, completed, decodes cleanly with FFmpeg"
+      ]
     },
     {
       "id": "FG-051",
@@ -776,8 +839,11 @@
         "Upload limit enforced",
         "Stop seeding at ratio"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "manual 2026-11-14: ratio 0 stops seeding on completion",
+        "unverified: upload limit, peers list while downloading"
+      ]
     },
     {
       "id": "FG-052",
@@ -793,8 +859,11 @@
       "criteria": [
         "Fast resume after restart without full recheck"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "code: MonoTorrent fast resume enabled",
+        "unverified"
+      ]
     },
     {
       "id": "FG-060",
@@ -808,8 +877,11 @@
       "criteria": [
         "GitHub Actions: dotnet test, web build, npm audit, dotnet list --vulnerable"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        ".github/workflows/ci.yml: Windows + Linux tests, web build, Edge extension e2e, NuGet + npm vulnerability scans, Docker build",
+        "unverified: has not run on GitHub yet (repository not published)"
+      ]
     },
     {
       "id": "FG-061",
@@ -827,8 +899,12 @@
         "yt-dlp/FFmpeg/Deno bundled with licences",
         "Update check via release feed"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "manual 2026-11-14: scripts/package.ps1 produced FluxGet-win-Setup.exe (200 MB), portable zip and update feed; portable build ran self-contained from a clean folder",
+        "tools checksum-verified: yt-dlp 2026.10.26, Deno 2.9.8, FFmpeg 9.0 LGPL shared",
+        "unverified: Setup.exe install/uninstall and update apply; installer is unsigned"
+      ]
     },
     {
       "id": "FG-062",
@@ -845,8 +921,10 @@
         "Benchmark results in README",
         "Segment default justified"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "bench/results.md: segment sweep 1-16 under per-connection limits and unthrottled, 4 GiB, crash recovery; default of 8 justified in the file"
+      ]
     },
     {
       "id": "FG-063",
@@ -864,8 +942,10 @@
         "SSRF guard blocks private addresses",
         "Token required"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "manual 2026-11-14: docker image built; container returns 401 without token, blocks 169.254.169.254 and localhost media, refuses /etc, downloads to /downloads, runs as uid 1654, read-only root fs, YouTube analysis works with Deno"
+      ]
     },
     {
       "id": "FG-064",
@@ -882,8 +962,10 @@
         "Repo pushed",
         "No secrets/media tracked"
       ],
-      "status": "todo",
-      "evidence": []
+      "status": "blocked",
+      "evidence": [
+        "blocked: GitHub CLI is not authenticated on this machine"
+      ]
     }
   ]
 }

@@ -27,6 +27,6 @@ $status = [ordered]@{
     tests = [ordered]@{ total = $total; passed = $passed; failed = $failed }
     webBuild = if ($SkipWeb) { 'skipped' } elseif ($webExit -eq 0) { 'passed' } else { 'failed' }
 }
-$status | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'docs/build-status.json')
+[IO.File]::WriteAllText((Join-Path $root 'docs/build-status.json'), ($status | ConvertTo-Json))
 Write-Host "Tests: $passed/$total passed, web build: $($status.webBuild)"
 if ($status.result -ne 'passed') { exit 1 }

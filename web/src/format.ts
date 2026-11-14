@@ -42,7 +42,14 @@ export function host(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
 
-export const displayName = (j: Job) => j.fileName || (j.extra?.title as string | undefined) || host(j.url)
+function urlFileName(url: string) {
+  try {
+    const last = new URL(url).pathname.split('/').filter(Boolean).pop()
+    return last && /\.[a-z0-9]{1,6}$/i.test(last) ? decodeURIComponent(last) : null
+  } catch { return null }
+}
+
+export const displayName = (j: Job) => j.fileName || (j.extra?.title as string | undefined) || urlFileName(j.url) || host(j.url)
 
 export function extension(name: string | null) {
   const m = name?.match(/\.([a-z0-9]{1,6})$/i)
