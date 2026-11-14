@@ -56,11 +56,6 @@
       "severity": "low"
     },
     {
-      "id": "R5",
-      "text": "GitHub publication blocked until the GitHub CLI is authenticated on this machine (gh auth login).",
-      "severity": "medium"
-    },
-    {
       "id": "R6",
       "text": "Some mirrors (e.g. OVH proof servers) cap connections per IP and temporarily block clients that exceed it. FluxGet now backs off, lowers its connection count and remembers the cap per host, but the default connection count still needs benchmarking.",
       "severity": "medium"
@@ -877,10 +872,9 @@
       "criteria": [
         "GitHub Actions: dotnet test, web build, npm audit, dotnet list --vulnerable"
       ],
-      "status": "done",
+      "status": "verified",
       "evidence": [
-        ".github/workflows/ci.yml: Windows + Linux tests, web build, Edge extension e2e, NuGet + npm vulnerability scans, Docker build",
-        "unverified: has not run on GitHub yet (repository not published)"
+        "GitHub Actions run 43610500406 (commit 055fc65): Windows tests + desktop build + Edge extension e2e, Ubuntu tests, NuGet/npm vulnerability scans and Docker build all green"
       ]
     },
     {
@@ -962,9 +956,9 @@
         "Repo pushed",
         "No secrets/media tracked"
       ],
-      "status": "blocked",
+      "status": "verified",
       "evidence": [
-        "blocked: GitHub CLI is not authenticated on this machine"
+        "Published to https://github.com/maestroohk/fluxget (public) with main and development; tracked files audited: no secrets, media, databases or binaries"
       ]
     }
   ]
