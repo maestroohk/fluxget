@@ -67,6 +67,14 @@ public sealed class JobStore
             );
             CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS tokens (hash TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS playback (
+              path TEXT PRIMARY KEY,
+              title TEXT,
+              position_ms INTEGER NOT NULL DEFAULT 0,
+              duration_ms INTEGER NOT NULL DEFAULT 0,
+              last_played TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_playback_recent ON playback(last_played DESC);
             """);
     }
 
@@ -275,6 +283,64 @@ public sealed class JobStore
         cmd.ExecuteNonQuery();
     }
 
+    public void SavePlayback(string path, string? title, long positionMs, long durationMs)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO playback (path, title, position_ms, duration_ms, last_played) VALUES ($p, $t, $pos, $dur, $at)
+            ON CONFLICT(path) DO UPDATE SET title = COALESCE(excluded.title, playback.title), position_ms = excluded.position_ms,
+              duration_ms = CASE WHEN excluded.duration_ms > 0 THEN excluded.duration_ms ELSE playback.duration_ms END, last_played = excluded.last_played
+            """;
+        cmd.Parameters.AddWithValue("$p", path);
+        cmd.Parameters.AddWithValue("$t", (object?)title ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$pos", Math.Max(0, positionMs));
+        cmd.Parameters.AddWithValue("$dur", Math.Max(0, durationMs));
+        cmd.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O"));
+        cmd.ExecuteNonQuery();
+    }
+
+    public PlaybackRecord? GetPlayback(string path)
+    {
+        using var c = Open();
+        return QueryPlayback(c, "SELECT path, title, position_ms, duration_ms, last_played FROM playback WHERE path = $p", cmd => cmd.Parameters.AddWithValue("$p", path)).FirstOrDefault();
+    }
+
+    public List<PlaybackRecord> RecentPlayback(int limit)
+    {
+        using var c = Open();
+        return QueryPlayback(c, "SELECT path, title, position_ms, duration_ms, last_played FROM playback ORDER BY last_played DESC LIMIT $n", cmd => cmd.Parameters.AddWithValue("$n", limit));
+    }
+
+    public Dictionary<string, PlaybackRecord> PlaybackFor(IEnumerable<string> paths)
+    {
+        var set = paths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        using var c = Open();
+        return QueryPlayback(c, "SELECT path, title, position_ms, duration_ms, last_played FROM playback", null)
+            .Where(r => set.Contains(r.Path)).ToDictionary(r => r.Path, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public void RemovePlayback(string path)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "DELETE FROM playback WHERE path = $p";
+        cmd.Parameters.AddWithValue("$p", path);
+        cmd.ExecuteNonQuery();
+    }
+
+    private static List<PlaybackRecord> QueryPlayback(SqliteConnection c, string sql, Action<SqliteCommand>? bind)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = sql;
+        bind?.Invoke(cmd);
+        using var r = cmd.ExecuteReader();
+        var list = new List<PlaybackRecord>();
+        while (r.Read())
+            list.Add(new PlaybackRecord(r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1), r.GetInt64(2), r.GetInt64(3), DateTime.Parse(r.GetString(4)).ToUniversalTime()));
+        return list;
+    }
+
     public static string HashToken(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private static List<Job> Query(SqliteConnection c, string sql, Action<SqliteCommand>? bind)
@@ -345,3 +411,5 @@ public sealed class JobStore
         cmd.Parameters.AddWithValue("$completed", V(j.CompletedAt?.ToString("O")));
     }
 }
+
+public sealed record PlaybackRecord(string Path, string? Title, long PositionMs, long DurationMs, DateTime LastPlayed);

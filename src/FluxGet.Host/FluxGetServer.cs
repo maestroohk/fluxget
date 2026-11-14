@@ -56,6 +56,8 @@ public static class FluxGetServer
         builder.Services.AddSingleton<AccessKeys>();
         builder.Services.AddSingleton<PairingService>();
         builder.Services.AddSingleton<AppSignals>();
+        builder.Services.AddSingleton<PreviewTokens>();
+        builder.Services.AddSingleton<Transcriber>();
         builder.Services.AddSingleton<YtDlp>();
         builder.Services.AddSingleton(sp => new TorrentRunner(engineOptions, store));
         builder.Services.AddSingleton<IJobRunner>(_ => new HttpRunner(engineOptions));
@@ -100,6 +102,8 @@ public static class FluxGetServer
         app.MapCore();
         app.MapMedia();
         app.MapTorrents();
+        app.MapPlayer();
+        app.MapSubtitles();
         if (webRoot is not null)
             app.MapFallback(async ctx =>
             {
