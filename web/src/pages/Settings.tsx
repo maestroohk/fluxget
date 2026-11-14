@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { FolderOpen, Monitor, Moon, Puzzle, Sun, Trash2 } from 'lucide-react'
 import { api, desktop, type Settings, type SystemInfo } from '../api'
-import { setSettings, useStore } from '../store'
+import { setSettings, setUpdate, useStore } from '../store'
 import { ago, limitText, parseLimit } from '../format'
 import { Button, Card, Field, IconButton, inputClass, Segmented, Toggle } from '../ui'
 import { attempt } from '../components/toast'
@@ -102,7 +102,7 @@ export function SettingsPage() {
 
         <Group title="About">
           <dl className="grid grid-cols-[140px_1fr] gap-y-2 text-[13px]">
-            <dt className="text-muted">Version</dt><dd>{system?.version}</dd>
+            <dt className="text-muted">Version</dt><dd className="flex flex-wrap items-center gap-3">{system?.version}{desktop.available() && <UpdateCheck />}</dd>
             <dt className="text-muted">Mode</dt><dd>{system?.mode}</dd>
             <dt className="text-muted">yt-dlp</dt><dd className="break-all">{system?.tools?.ytDlp ?? <span className="text-warn">not found — media downloads unavailable</span>}</dd>
             <dt className="text-muted">FFmpeg</dt><dd className="break-all">{system?.tools?.ffmpeg ?? <span className="text-warn">not found — merging and conversion unavailable</span>}</dd>
@@ -133,4 +133,17 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return <div className="flex items-center justify-between gap-4 text-[13.5px]"><span>{label}</span>{children}</div>
+}
+
+function UpdateCheck() {
+  const update = useStore(s => s.update)
+  const text = !update ? '' : update.state === 'checking' ? 'Checking…' : update.state === 'current' ? 'You have the latest version.'
+    : update.state === 'ready' ? `Version ${update.version} is ready — restart to update.` : update.state === 'error' ? `Couldn't check: ${update.error}` : update.state === 'unsupported' ? 'Updates work in the installed app.' : ''
+  return (
+    <>
+      <Button size="sm" onClick={() => { setUpdate({ state: 'checking' }); desktop.send({ type: 'checkUpdates' }) }} disabled={update?.state === 'checking'}>Check for updates</Button>
+      {update?.state === 'ready' && <Button size="sm" variant="primary" onClick={() => desktop.send({ type: 'applyUpdate' })}>Restart to update</Button>}
+      {text && <span className="text-[12.5px] text-muted">{text}</span>}
+    </>
+  )
 }

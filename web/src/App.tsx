@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CalendarClock, CheckCheck, Clapperboard, Download, LayoutGrid, Magnet, Plus, Settings as Cog, WifiOff } from 'lucide-react'
-import { onCompleted, useStore } from './store'
+import { onCompleted, setUpdate, useStore } from './store'
 import { navigate, useRoute, type Page } from './router'
 import { speed } from './format'
 import { desktop } from './api'
@@ -37,6 +37,7 @@ export function App() {
   const jobs = useStore(s => s.jobs)
   const history = useStore(s => s.history)
   const settings = useStore(s => s.settings)
+  const update = useStore(s => s.update)
 
   const counts = useMemo(() => {
     const c = { downloads: 0, media: 0, torrents: 0, attention: 0 }
@@ -74,6 +75,7 @@ export function App() {
     if (!wv) return
     desktop.send({ type: 'theme', dark: document.documentElement.classList.contains('dark') })
     const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'update') { setUpdate(e.data); return }
       if (typeof e.data?.url !== 'string') return
       if (e.data.type === 'add') openAdd(e.data.url)
       if (e.data.type === 'media') navigate('media', { url: e.data.url })
@@ -122,6 +124,13 @@ export function App() {
           <div className="flex-1" />
           <Button variant="primary" onClick={() => openAdd()} title="Add (Ctrl+N)"><Plus size={16} /> <span className="hidden sm:inline">Add</span></Button>
         </header>
+        {(update?.state === 'ready' || update?.state === 'applying') && (
+          <div className="flex items-center gap-3 border-b border-line bg-accent-soft/60 px-4 py-2 text-[13px] sm:px-6 animate-fade">
+            <span className="size-2 rounded-full bg-accent" />
+            <span className="flex-1">{update.state === 'applying' ? `Installing FluxGet ${update.version}…` : <>FluxGet <b>{update.version}</b> is ready. Restart to finish updating — downloads resume automatically.</>}</span>
+            {update.state === 'ready' && <Button size="sm" variant="primary" onClick={() => desktop.send({ type: 'applyUpdate' })}>Restart to update</Button>}
+          </div>
+        )}
         <main className={cx('min-h-0 flex-1 overflow-hidden pb-16 transition-opacity md:pb-0', !connected && 'pointer-events-none opacity-60')} aria-busy={!connected}>
           {page === 'overview' && <Overview openAdd={openAdd} />}
           {page === 'downloads' && <Downloads openAdd={openAdd} />}

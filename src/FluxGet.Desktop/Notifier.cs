@@ -11,10 +11,12 @@ internal sealed class Notifier
     private readonly Action _showWindow;
     private readonly Func<long, Job?> _find;
     private readonly Control _ui;
+    private readonly Action _applyUpdate;
 
-    public Notifier(Control ui, Action showWindow, Func<long, Job?> find)
+    public Notifier(Control ui, Action showWindow, Func<long, Job?> find, Action applyUpdate)
     {
         _ui = ui;
+        _applyUpdate = applyUpdate;
         _showWindow = showWindow;
         _find = find;
         _logo = WriteLogo();
@@ -63,11 +65,19 @@ internal sealed class Notifier
             .AddText(job.FileName ?? "Download")
             .AddText(job.Error ?? ""));
 
+    public void UpdateReady(string version) =>
+        Show(Base()
+            .AddArgument("action", "show")
+            .AddText($"FluxGet {version} is ready")
+            .AddText("Restart FluxGet to finish updating. Active downloads resume automatically.")
+            .AddButton(new ToastButton().SetContent("Restart now").AddArgument("action", "update"))
+            .AddButton(new ToastButton().SetContent("Later").SetDismissActivation()));
+
     public void Info(string title, string text) => Show(Base().AddArgument("action", "show").AddText(title).AddText(text));
 
     private ToastContentBuilder Base()
     {
-        var b = new ToastContentBuilder().AddAttributionText("FluxGet");
+        var b = new ToastContentBuilder();
         if (_logo is not null) b.AddAppLogoOverride(new Uri(_logo), ToastGenericAppLogoCrop.Default);
         return b;
     }
@@ -87,6 +97,9 @@ internal sealed class Notifier
         {
             case "open" when path is not null && File.Exists(path):
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                break;
+            case "update":
+                _applyUpdate();
                 break;
             case "reveal" when path is not null && File.Exists(path):
                 Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { "/select,", path } });

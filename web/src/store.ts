@@ -11,7 +11,10 @@ interface State {
   pairs: PairRequest[]
   history: { down: number; up: number }[]
   version: number
+  update: UpdateState | null
 }
+
+export interface UpdateState { state: 'ready' | 'current' | 'error' | 'unsupported' | 'applying' | 'checking'; version?: string | null; current?: string | null; error?: string | null }
 
 const HISTORY = 90
 let state: State = {
@@ -22,6 +25,7 @@ let state: State = {
   pairs: [],
   history: Array.from({ length: HISTORY }, () => ({ down: 0, up: 0 })),
   version: 0,
+  update: null,
 }
 const listeners = new Set<() => void>()
 const completedListeners = new Set<(j: Job) => void>()
@@ -121,6 +125,8 @@ window.addEventListener('fg-unauthorized', () => {
 })
 
 export function setSettings(settings: Settings) { set({ settings }) }
+
+export function setUpdate(update: UpdateState) { set({ update }) }
 
 export function patchJob(job: Job) { set({ jobs: upsert(job) }) }
 

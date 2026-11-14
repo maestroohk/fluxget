@@ -957,7 +957,8 @@
       ],
       "status": "verified",
       "evidence": [
-        "Published to https://github.com/maestroohk/fluxget (public) with main and development; tracked files audited: no secrets, media, databases or binaries"
+        "Published to https://github.com/maestroohk/fluxget (public) with main and development; tracked files audited: no secrets, media, databases or binaries",
+        "GitHub release v0.3.1 published by the Release workflow"
       ]
     },
     {
@@ -981,6 +982,27 @@
         "manual 2026-11-14 (installed 0.3.0): fluxget://send with a YouTube URL opened the Media page with all qualities",
         "e2e (Edge): cross-browser manifest passes all 7 checks",
         "unverified: Firefox (not installed here); Chrome 157 blocks command-line extension loading, so Chrome needs the manual Load unpacked check"
+      ]
+    },
+    {
+      "id": "FG-065",
+      "milestone": "M6",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "get updates inside FluxGet without re-running the installer",
+      "value": "Neat, safe updates",
+      "deps": [
+        "FG-061"
+      ],
+      "criteria": [
+        "Background check against GitHub Releases",
+        "Banner and notification when ready",
+        "Restart applies the update and keeps downloads and settings"
+      ],
+      "status": "verified",
+      "evidence": [
+        "manual 2026-11-14: installed 0.3.2 found a 0.3.3 feed, downloaded it in the background, showed the in-app banner and a 'ready' notification; Restart to update closed, applied and relaunched 0.3.3 with FluxGetData intact"
       ]
     }
   ]

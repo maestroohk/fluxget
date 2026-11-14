@@ -78,7 +78,7 @@ jobs:
         shell: pwsh
         run: |
           dotnet tool install -g vpk --version 1.2.161
-          vpk pack --packId FluxGet --packVersion ${{ steps.v.outputs.version }} --packDir artifacts/publish/win-x64 --mainExe FluxGet.exe --packTitle FluxGet --icon src/FluxGet.Desktop/fluxget.ico --outputDir artifacts/releases
+          vpk pack --packId FluxGet --packVersion ${{ steps.v.outputs.version }} --packDir artifacts/publish/win-x64 --mainExe FluxGet.exe --packTitle FluxGet --icon src/FluxGet.Desktop/fluxget.ico --splashImage src/FluxGet.Desktop/installer-splash.png --packAuthors FluxGet --outputDir artifacts/releases
           Compress-Archive -Path extension/* -DestinationPath artifacts/releases/FluxGet-extension-${{ steps.v.outputs.version }}.zip
 
       - name: Upload unsigned installer

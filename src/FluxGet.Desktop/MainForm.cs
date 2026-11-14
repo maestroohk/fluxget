@@ -17,6 +17,8 @@ internal sealed class MainForm : Form
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(12, 13, 15) };
     private readonly NotifyIcon _tray;
     private readonly Notifier _notifier;
+    private readonly Updates _updates = new();
+    private bool _updateLoopStarted;
     private readonly string _origin = $"http://127.0.0.1:{Program.Port}";
     private string? _pendingArgument;
     private bool _exiting;
@@ -37,7 +39,8 @@ internal sealed class MainForm : Form
 
         _tray = new NotifyIcon { Icon = Icon, Text = "FluxGet", Visible = true, ContextMenuStrip = BuildTrayMenu() };
         _tray.DoubleClick += (_, _) => ShowWindow();
-        _notifier = new Notifier(this, ShowWindow, id => _manager.Find(id));
+        _notifier = new Notifier(this, ShowWindow, id => _manager.Find(id), () => _ = ApplyUpdateAsync());
+        Branding.Ensure();
 
         _manager.JobChanged += OnJobChanged;
         server.Services.GetRequiredService<AppSignals>().ActivateRequested += arg => BeginInvoke(() => Activate(arg));
@@ -107,6 +110,11 @@ internal sealed class MainForm : Form
         core.WebMessageReceived += OnWebMessage;
         core.NavigationCompleted += (_, _) =>
         {
+            if (!_updateLoopStarted)
+            {
+                _updateLoopStarted = true;
+                _ = UpdateLoopAsync();
+            }
             if (_pendingArgument is { } arg)
             {
                 _pendingArgument = null;
@@ -143,6 +151,12 @@ internal sealed class MainForm : Form
             case "extensionInfo":
                 _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "extensionInfo", path = ExtensionFolder() }));
                 break;
+            case "checkUpdates":
+                _ = CheckUpdatesAsync(manual: true);
+                break;
+            case "applyUpdate":
+                _ = ApplyUpdateAsync();
+                break;
             case "theme":
                 SetDarkTitleBar(doc.RootElement.TryGetProperty("dark", out var d) && d.GetBoolean());
                 break;
@@ -167,6 +181,39 @@ internal sealed class MainForm : Form
         }
         if (url is not null && (url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || url.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase)))
             _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type, url }));
+    }
+
+    private async Task UpdateLoopAsync()
+    {
+        await Task.Delay(TimeSpan.FromSeconds(8));
+        while (!_exiting)
+        {
+            await CheckUpdatesAsync(manual: false);
+            await Task.Delay(TimeSpan.FromHours(6));
+        }
+    }
+
+    private async Task CheckUpdatesAsync(bool manual)
+    {
+        var wasReady = _updates.ReadyVersion is not null;
+        var (state, version, error) = await _updates.CheckAsync();
+        PostToUi(new { type = "update", state, version, current = _updates.CurrentVersion, error });
+        if (state == "ready" && !wasReady && version is not null) _notifier.UpdateReady(version);
+    }
+
+    private async Task ApplyUpdateAsync()
+    {
+        if (_updates.ReadyVersion is null) return;
+        _exiting = true;
+        PostToUi(new { type = "update", state = "applying", version = _updates.ReadyVersion });
+        try { await _server.StopAsync(); } catch (Exception) { }
+        _updates.ApplyAndRestart();
+    }
+
+    private void PostToUi(object message)
+    {
+        if (InvokeRequired) { BeginInvoke(() => PostToUi(message)); return; }
+        _web.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(message, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     }
 
     private static readonly System.Text.RegularExpressions.Regex MediaSites = new(@"(^|\.)(youtube\.com|youtu\.be|facebook\.com|fb\.watch|instagram\.com|tiktok\.com|x\.com|twitter\.com|reddit\.com|vimeo\.com|twitch\.tv|dailymotion\.com|soundcloud\.com|bilibili\.com)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
