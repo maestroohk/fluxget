@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FluxGet Progress</title>
+<style>
+:root{--bg:#f6f5f2;--panel:#fff;--ink:#16171a;--muted:#6b6d73;--line:#e4e2dc;--accent:#e8552b;--ok:#1f8a5b;--warn:#b7791f;--bad:#c53030;--chip:#efede8}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1012;--panel:#17181b;--ink:#ecebe8;--muted:#9a9ca3;--line:#26282c;--accent:#ff7a4d;--ok:#3fbf86;--warn:#e0a84a;--bad:#f06a6a;--chip:#212327}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 ui-sans-serif,"Segoe UI Variable","Segoe UI",system-ui,sans-serif}
+main{max-width:1180px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:22px;margin:0;letter-spacing:-.01em}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:36px 0 12px;font-weight:600}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.muted{color:var(--muted)}.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.big{font-size:30px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.bar{height:6px;border-radius:3px;background:var(--chip);overflow:hidden;margin-top:8px}.bar>i{display:block;height:100%;background:var(--accent)}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+td,th{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{font-size:12px;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}.chip{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--chip);font-size:12px;white-space:nowrap}
+.s-verified{color:var(--ok)}.s-done{color:var(--warn)}.s-in_progress{color:var(--accent)}.s-blocked{color:var(--bad)}
+details summary{cursor:pointer}ul{margin:6px 0;padding-left:18px}.ev{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--muted)}
+.diag{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px;overflow-x:auto}
+.diag h3{margin:0 0 8px;font-size:15px}.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.filters button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:4px 12px;cursor:pointer;font:inherit}
+.filters button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+@media (max-width:640px){.hide-sm{display:none}}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1>FluxGet — development progress</h1><div class="muted" id="sub"></div></div>
+    <div class="muted" id="build"></div>
+  </div>
+  <h2>Verified completion</h2>
+  <div class="grid" id="summary"></div>
+  <h2>Milestones</h2>
+  <div class="grid" id="milestones"></div>
+  <h2>Stories</h2>
+  <div class="filters" id="filters"></div>
+  <table><thead><tr><th>ID</th><th>Story</th><th class="hide-sm">Milestone</th><th>Pts</th><th>Status</th></tr></thead><tbody id="stories"></tbody></table>
+  <h2>Latest verified functionality</h2>
+  <div class="card" id="latest"></div>
+  <h2>Risks</h2>
+  <div class="card"><ul id="risks"></ul></div>
+  <h2>Architecture</h2>
+  <div id="diagrams"></div>
+</main>
+<script type="module">
+const base = new URL('.', location.href);
+const get = async (p, json = true) => { const r = await fetch(new URL(p, base), { cache: 'no-store' }); if (!r.ok) throw new Error(p); return json ? r.json() : r.text(); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const p = await get('progress.json');
+const build = await get('build-status.json').catch(() => null);
+const sum = xs => xs.reduce((a, s) => a + s.points, 0);
+const total = sum(p.stories), verified = sum(p.stories.filter(s => s.status === 'verified'));
+const pct = (a, b) => b ? Math.round(a * 100 / b) : 0;
+const count = st => p.stories.filter(s => s.status === st).length;
+document.getElementById('sub').textContent = `Updated ${p.updated} · current milestone ${p.currentMilestone} · ${p.rules}`;
+document.getElementById('summary').innerHTML = [
+  ['Verified', pct(verified, total) + '%', `${verified} / ${total} points`, pct(verified, total)],
+  ['Verified stories', count('verified'), `of ${p.stories.length}`],
+  ['Code done, unverified', count('done')],
+  ['In progress', count('in_progress')],
+  ['Blocked', count('blocked')],
+  ['Not started', count('todo')],
+  ['Tests', build ? `${build.tests.passed}/${build.tests.total}` : '—', build ? (build.tests.failed ? `${build.tests.failed} failing` : 'all passing') : 'no run recorded']
+].map(([k, v, d, bar]) => `<div class="card"><div class="muted">${k}</div><div class="big">${v}</div>${d ? `<div class="muted">${d}</div>` : ''}${bar !== undefined ? `<div class="bar"><i style="width:${bar}%"></i></div>` : ''}</div>`).join('');
+document.getElementById('build').innerHTML = build ? `Last build <b>${esc(build.result)}</b> · ${esc(build.at)} · ${esc(build.commit || 'uncommitted')}` : 'No build recorded';
+document.getElementById('milestones').innerHTML = p.milestones.map(m => {
+  const ss = p.stories.filter(s => s.milestone === m.id), v = sum(ss.filter(s => s.status === 'verified')), t = sum(ss);
+  return `<div class="card"><div class="muted">${m.id}</div><div style="font-weight:600">${esc(m.name)}</div><div class="muted" style="font-size:12px">${esc(m.goal)}</div><div class="big" style="font-size:22px;margin-top:6px">${pct(v, t)}%</div><div class="bar"><i style="width:${pct(v, t)}%"></i></div><div class="muted" style="font-size:12px">${v}/${t} pts</div></div>`;
+}).join('');
+const filters = ['all', 'verified', 'done', 'in_progress', 'blocked', 'todo'];
+let filter = 'all';
+const renderStories = () => {
+  document.getElementById('filters').innerHTML = filters.map(f => `<button aria-pressed="${f === filter}" data-f="${f}">${f.replace('_', ' ')}</button>`).join('');
+  document.getElementById('stories').innerHTML = p.stories.filter(s => filter === 'all' || s.status === filter).map(s => `<tr>
+    <td><b>${s.id}</b><div class="muted">${s.priority}</div></td>
+    <td><details><summary>As a ${esc(s.role)}, I can ${esc(s.goal)}</summary>
+      <div class="muted">${esc(s.value)}${s.deps.length ? ' · depends on ' + s.deps.join(', ') : ''}</div>
+      <ul>${s.criteria.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
+      ${s.evidence.length ? `<div class="ev">${s.evidence.map(esc).join('<br>')}</div>` : ''}</details></td>
+    <td class="hide-sm">${s.milestone}</td><td>${s.points}</td>
+    <td><span class="chip s-${s.status}">${s.status.replace('_', ' ')}</span></td></tr>`).join('');
+};
+document.getElementById('filters').addEventListener('click', e => { if (e.target.dataset.f) { filter = e.target.dataset.f; renderStories(); } });
+renderStories();
+const latest = p.stories.filter(s => s.status === 'verified' && s.evidence.length).slice(-6);
+document.getElementById('latest').innerHTML = latest.length ? latest.map(s => `<div><b>${s.id}</b> ${esc(s.goal)}<div class="ev">${s.evidence.map(esc).join(' · ')}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line)">') : '<span class="muted">Nothing verified yet.</span>';
+document.getElementById('risks').innerHTML = p.risks.map(r => `<li><span class="chip">${r.severity}</span> ${esc(r.text)}</li>`).join('');
+const md = await get('ARCHITECTURE.md', false);
+const blocks = [...md.matchAll(/^## (.+)\n+```mermaid\n([\s\S]*?)```/gm)];
+document.getElementById('diagrams').innerHTML = blocks.map(([, t, code], i) => `<div class="diag"><h3>${esc(t)}</h3><pre class="mermaid" id="d${i}">${esc(code)}</pre></div>`).join('');
+const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs');
+mermaid.initialize({ startOnLoad: false, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'neutral', securityLevel: 'strict' });
+await mermaid.run({ querySelector: '.mermaid' });
+</script>
+</body>
+</html>

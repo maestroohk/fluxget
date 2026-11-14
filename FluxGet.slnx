@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/bench/">
+    <Project Path="bench/FluxGet.Bench/FluxGet.Bench.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/FluxGet.Desktop/FluxGet.Desktop.csproj" />
+    <Project Path="src/FluxGet.Engine/FluxGet.Engine.csproj" />
+    <Project Path="src/FluxGet.Host/FluxGet.Host.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FluxGet.Engine.Tests/FluxGet.Engine.Tests.csproj" />
+    <Project Path="tests/FluxGet.Testing/FluxGet.Testing.csproj" />
+  </Folder>
+</Solution>
