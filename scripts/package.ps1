@@ -26,6 +26,7 @@ New-Item -ItemType Directory -Force (Join-Path $publish 'tools') | Out-Null
 Copy-Item 'tools/bin/*' (Join-Path $publish 'tools') -Recurse -Force
 Copy-Item LICENSE, THIRD-PARTY-NOTICES.md $publish -Force
 Copy-Item extension (Join-Path $publish 'extension') -Recurse -Force
+Get-ChildItem (Join-Path $publish 'runtimes') -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'win-x64' } | Remove-Item -Recurse -Force
 
 dotnet tool update -g vpk --version 1.2.161 | Out-Host
 $signArgs = @()

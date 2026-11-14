@@ -45,6 +45,7 @@ jobs:
           Copy-Item tools/bin/* artifacts/publish/win-x64/tools -Recurse -Force
           Copy-Item LICENSE, THIRD-PARTY-NOTICES.md artifacts/publish/win-x64 -Force
           Copy-Item extension artifacts/publish/win-x64/extension -Recurse -Force
+          Get-ChildItem artifacts/publish/win-x64/runtimes -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'win-x64' } | Remove-Item -Recurse -Force
           New-Item -ItemType Directory -Force artifacts/to-sign | Out-Null
           Get-ChildItem artifacts/publish/win-x64 -File | Where-Object { $_.Name -like 'FluxGet*.exe' -or $_.Name -like 'FluxGet*.dll' } | Copy-Item -Destination artifacts/to-sign
 
