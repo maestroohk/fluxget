@@ -9,6 +9,7 @@ const subs = new Set<() => void>()
 const emit = () => subs.forEach(s => s())
 
 export function toast(text: string, tone: Toast['tone'] = 'info') {
+  if (toasts.some(x => x.text === text)) return
   const t = { id: nextId++, text, tone }
   toasts = [...toasts.slice(-3), t]
   emit()

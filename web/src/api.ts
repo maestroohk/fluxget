@@ -76,7 +76,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     init.body = JSON.stringify(body)
     ;(init.headers as Record<string, string>)['Content-Type'] = 'application/json'
   }
-  const res = await fetch(path, init)
+  let res: Response
+  try {
+    res = await fetch(path, init)
+  } catch {
+    window.dispatchEvent(new Event('fg-offline'))
+    throw new ApiError(0, "Can't reach FluxGet. Make sure the app is running.")
+  }
   if (res.status === 401) {
     window.dispatchEvent(new Event('fg-unauthorized'))
     throw new ApiError(401, 'Not signed in')

@@ -113,6 +113,8 @@ export async function boot() {
   connect()
 }
 
+window.addEventListener('fg-offline', () => set({ connected: false }))
+
 window.addEventListener('fg-unauthorized', () => {
   source?.close()
   set({ authenticated: false, connected: false })

@@ -46,12 +46,32 @@
   shadow.append(h('style', {}, `
     :host { all: initial; }
     * { box-sizing: border-box; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; }
-    .btn { position: fixed; display: none; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 10px; border-radius: 10px;
-      border: 1px solid rgba(255,255,255,.16); background: rgba(20,21,24,.92); color: #f2f1ee; font-size: 13px; font-weight: 600;
-      cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.35); backdrop-filter: blur(8px); transition: background .15s, transform .15s; }
-    .btn:hover { background: rgba(32,33,38,.96); transform: translateY(-1px); }
-    .btn svg, .row svg, .done svg { width: 16px; height: 16px; fill: none; stroke: #ff6e43; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-    .btn.show { display: inline-flex; animation: in .16s ease-out; }
+    .btn { position: fixed; top: 0; left: auto; right: 0; display: flex; align-items: center; height: 28px; padding: 0 7px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.14); background: rgba(17,18,21,.82); color: #f2f1ee; font-size: 12px; font-weight: 600;
+      cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,.3); opacity: 0; visibility: hidden; pointer-events: none;
+      transition: opacity .18s ease, visibility .18s, background .15s; will-change: transform; contain: layout paint; }
+    .btn.show { opacity: 1; visibility: visible; pointer-events: auto; }
+    .btn:hover, .btn.open { background: rgba(17,18,21,.96); }
+    .btn .lbl { max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0; transition: max-width .2s ease, opacity .15s, margin .2s; }
+    .btn:hover .lbl, .btn.open .lbl { max-width: 80px; opacity: 1; margin-left: 5px; }
+    .btn.busy .lbl, .btn.finished .lbl { max-width: 80px; opacity: 1; margin-left: 5px; font-variant-numeric: tabular-nums; }
+    .btn.busy::before { content: ''; position: absolute; inset: -2px; border-radius: 10px; padding: 2px; pointer-events: none;
+      background: conic-gradient(#ff6e43 calc(var(--p, 0) * 1%), rgba(255,255,255,.16) 0);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+    .btn.finished { border-color: rgba(63,196,134,.6); }
+    .btn.finished svg { stroke: #3fc486; }
+    .dls:empty { display: none; }
+    .dls { border-bottom: 1px solid #23252a; padding-bottom: 6px; }
+    .dl { padding: 6px 14px 8px; }
+    .dl-name { font-size: 12.5px; color: #e4e3df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dl .bar { margin: 7px 0 5px; }
+    .dl-done { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 12.5px; }
+    .acts { display: flex; gap: 12px; }
+    .more { display: block; width: 100%; padding: 9px 14px; background: none; border: 0; text-align: left; color: #ff8a66; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+    .more:hover { background: #1d1f24; }
+    .opts[hidden] { display: none; }
+    .hint { padding: 2px 14px 6px; color: #6f727a; font-size: 11.5px; }
+    .btn svg, .row svg, .done svg { width: 15px; height: 15px; fill: none; stroke: #ff6e43; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; flex: none; }
     .panel { position: fixed; display: none; width: 300px; max-height: 70vh; overflow: auto; border-radius: 14px; background: #141518;
       border: 1px solid #2a2c31; color: #edece8; box-shadow: 0 18px 60px rgba(0,0,0,.55); font-size: 13px; animation: in .16s ease-out; }
     .panel.show { display: block; }
@@ -84,7 +104,8 @@
     .link:hover { text-decoration: underline; }
     .primary { height: 30px; padding: 0 12px; border-radius: 8px; border: 0; background: #edece8; color: #141518; font-weight: 600; cursor: pointer; font-size: 12.5px; }
   `))
-  const button = h('button', { class: 'btn', type: 'button', 'aria-label': 'Download with FluxGet' }, svg(ICON_DOWN), 'Download')
+  const label = h('span', { class: 'lbl' }, 'Download')
+  const button = h('button', { class: 'btn', type: 'button', 'aria-label': 'Download with FluxGet', title: 'Download with FluxGet' }, svg(ICON_DOWN), label)
   const panel = h('div', { class: 'panel', role: 'dialog', 'aria-label': 'FluxGet download options' })
   shadow.append(button, panel)
   document.documentElement.append(host)
@@ -92,7 +113,6 @@
   let target = null
   let hideTimer = 0
   let open = false
-  let pollTimer = 0
   const cache = new Map()
 
   const pageUrl = () => {
@@ -105,18 +125,33 @@
     const el = (MEDIA_SITE && player && player.contains(target)) ? player : target
     return el?.getBoundingClientRect()
   }
+  let lastPos = ''
+  let raf = 0
   const place = () => {
     const r = anchorRect()
     if (!r || r.width < 240 || r.height < 135 || r.bottom < 40 || r.top > innerHeight - 40) { if (!open) hideButton(); return }
-    button.style.top = `${Math.max(8, r.top + 12)}px`
-    button.style.left = `${Math.min(innerWidth - 120, r.right - 118)}px`
-    button.classList.add('show')
-    if (open) {
-      panel.style.top = `${Math.max(8, r.top + 52)}px`
-      panel.style.left = `${Math.max(8, Math.min(innerWidth - 310, r.right - 302))}px`
+    const top = Math.round(Math.max(8, r.top + 10))
+    const right = Math.round(Math.min(innerWidth - 8, r.right - 10))
+    const pos = `${top}:${right}`
+    if (pos !== lastPos) {
+      lastPos = pos
+      button.style.right = `${document.documentElement.clientWidth - right}px`
+      button.style.transform = `translateY(${top}px)`
+      if (open) {
+        panel.style.top = `${top + 36}px`
+        panel.style.left = `${Math.max(8, Math.min(innerWidth - 310, right - 300))}px`
+      }
     }
+    if (!button.classList.contains('show')) button.classList.add('show')
   }
-  const hideButton = () => { if (!open) button.classList.remove('show') }
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; place() }) }
+  const hideButton = () => { if (!open && !button.classList.contains('busy')) { button.classList.remove('show'); lastPos = '' } }
+  const reveal = (v, ms) => {
+    target = v
+    schedule()
+    clearTimeout(hideTimer)
+    if (ms) hideTimer = setTimeout(hideButton, ms)
+  }
 
   const videoAt = (x, y) => {
     for (const v of document.querySelectorAll('video')) {
@@ -126,21 +161,22 @@
     return null
   }
 
+  let lastMove = 0
   document.addEventListener('mousemove', e => {
     if (!enabled) return
+    const now = performance.now()
+    if (now - lastMove < 80) return
+    lastMove = now
     if (e.composedPath().includes(host)) { clearTimeout(hideTimer); return }
     const v = videoAt(e.clientX, e.clientY)
-    if (v && !v.mediaKeys) {
-      clearTimeout(hideTimer)
-      target = v
-      place()
-    } else if (!open) {
-      clearTimeout(hideTimer)
-      hideTimer = setTimeout(hideButton, 1200)
-    }
+    if (v && !v.mediaKeys) reveal(v, open ? 0 : 2500)
+    else if (!open) { clearTimeout(hideTimer); hideTimer = setTimeout(hideButton, 600) }
   }, { passive: true })
-  addEventListener('scroll', () => target && place(), { passive: true })
-  addEventListener('resize', () => target && place(), { passive: true })
+  document.addEventListener('play', e => {
+    if (enabled && e.target instanceof HTMLVideoElement && !e.target.mediaKeys && !open) reveal(e.target, 4000)
+  }, true)
+  addEventListener('scroll', () => target && button.classList.contains('show') && schedule(), { passive: true })
+  addEventListener('resize', () => target && button.classList.contains('show') && schedule(), { passive: true })
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && open) close() })
   document.addEventListener('mousedown', e => { if (open && !e.composedPath().includes(host)) close() }, true)
   document.addEventListener('yt-navigate-finish', () => close())
@@ -150,20 +186,32 @@
     open ? close() : show()
   })
 
+  const active = new Map()
+  const dlBox = h('div', { class: 'dls' })
+  const busy = () => [...active.values()].some(a => a.state === 'run')
+
   function close() {
     open = false
-    clearInterval(pollTimer)
+    button.classList.remove('open')
     panel.classList.remove('show')
+    for (const [id, a] of active) if (a.state !== 'run') active.delete(id)
+    updateRing()
+    if (!busy()) { clearTimeout(hideTimer); hideTimer = setTimeout(hideButton, 1500) }
   }
 
   function frame(...body) {
+    renderDownloads()
     panel.replaceChildren(
-      h('div', { class: 'head' }, h('div', { class: 'mark' }, h('i')), h('div', { class: 'brand' }, 'FluxGet'), h('button', { class: 'x', 'aria-label': 'Close', onclick: close }, '×')),
-      ...body.flat())
+      h('div', { class: 'head' }, h('div', { class: 'mark' }, h('i')), h('div', { class: 'brand' }, 'FluxGet'),
+        h('button', { class: 'x', 'aria-label': 'Hide', title: 'Hide (downloads keep going)', onclick: close }, '–')),
+      dlBox,
+      ...body.flat().filter(Boolean))
   }
 
   async function show() {
     open = true
+    button.classList.add('open')
+    lastPos = ''
     panel.classList.add('show')
     place()
     frame(h('div', { class: 'msg' }, h('span', { class: 'spin' }), 'Connecting to FluxGet…'))
@@ -192,8 +240,7 @@
         h('div', { class: 'foot' }, h('span'), h('button', { class: 'primary', onclick: () => send({ type: 'fg-open-media', url }) }, 'Open in FluxGet')))
     }
     const videos = info.video.filter(v => v.height >= 144).slice(0, 6)
-    frame(
-      h('div', { class: 'title', title: info.title }, info.title),
+    const options = h('div', { class: 'opts' },
       h('div', { class: 'label' }, 'Video'),
       videos.length
         ? videos.map(v => row(ICON_DOWN, quality(v.height), `MP4${v.fps > 30 ? ` · ${Math.round(v.fps)} fps` : ''}`, v.size ? `${v.estimated ? '≈' : ''}${fmt(v.size)}` : '', () => startMedia(info, { mode: 'video', height: v.height, container: 'mp4' }, `${quality(v.height)} MP4`)))
@@ -201,9 +248,16 @@
       h('div', { class: 'label' }, 'Audio only'),
       row(ICON_DOWN, 'MP3', '192 kbps', '', () => startMedia(info, { mode: 'audio', audioFormat: 'mp3', audioQuality: '192' }, 'MP3 192 kbps')),
       row(ICON_DOWN, 'MP3', '320 kbps', '', () => startMedia(info, { mode: 'audio', audioFormat: 'mp3', audioQuality: '320' }, 'MP3 320 kbps')),
-      row(ICON_DOWN, 'M4A', 'original quality', '', () => startMedia(info, { mode: 'audio', audioFormat: 'm4a', audioQuality: null }, 'M4A')),
-      h('div', { class: 'foot' }, h('button', { class: 'link', onclick: () => send({ type: 'fg-open-media', url }) }, 'More formats in FluxGet'), h('span')))
-    panel.querySelector('.row')?.focus()
+      row(ICON_DOWN, 'M4A', 'original quality', '', () => startMedia(info, { mode: 'audio', audioFormat: 'm4a', audioQuality: null }, 'M4A')))
+    const collapsed = active.size > 0
+    if (collapsed) options.hidden = true
+    const more = collapsed ? h('button', { class: 'more', type: 'button', onclick: () => { options.hidden = !options.hidden; more.textContent = options.hidden ? 'Download another format ▾' : 'Hide formats ▴' } }, 'Download another format ▾') : null
+    frame(
+      collapsed ? null : h('div', { class: 'title', title: info.title }, info.title),
+      more,
+      options,
+      h('div', { class: 'foot' }, h('button', { class: 'link', onclick: () => send({ type: 'fg-open-media', url }) }, 'More formats in FluxGet'), h('button', { class: 'link', onclick: () => send({ type: 'fg-open-app' }) }, 'Open FluxGet')))
+    if (!collapsed) panel.querySelector('.row')?.focus()
   }
 
   function row(icon, main, sub, right, onclick) {
@@ -213,50 +267,88 @@
   const quality = hgt => (hgt >= 2160 ? `${hgt >= 4320 ? '8K' : '4K'}` : hgt >= 1440 ? '1440p' : `${hgt}p`)
 
   async function startMedia(info, opts, label) {
-    frame(h('div', { class: 'msg' }, h('span', { class: 'spin' }), `Starting ${label}…`))
     const r = await send({ type: 'fg-media-download', item: { url: info.url, title: info.title, id: info.id }, opts })
-    if (!r?.ok) return frame(h('div', { class: 'msg err' }, r?.error || 'FluxGet could not start this download.'))
-    track(r.jobId, info.title, label)
+    if (!r?.ok) {
+      active.set(`err-${Date.now()}`, { title: info.title, label, state: 'fail', text: r?.error || 'FluxGet could not start this download.' })
+      renderDownloads()
+      return
+    }
+    active.set(r.jobId, { title: info.title, label, state: 'run', pct: 0, text: 'Starting…' })
+    const optionsEl = panel.querySelector('.opts')
+    if (optionsEl) optionsEl.hidden = true
+    renderDownloads()
+    poll()
   }
 
   async function startDirect(src) {
-    frame(h('div', { class: 'msg' }, h('span', { class: 'spin' }), 'Sending to FluxGet…'))
     const r = await send({ type: 'video-button', src })
-    if (!r?.ok) return frame(h('div', { class: 'msg err' }, r?.error || 'FluxGet could not start this download.'))
-    frame(h('div', { class: 'prog' }, h('div', { class: 'done' }, svg(ICON_CHECK), 'Sent to FluxGet')))
+    active.set(`direct-${Date.now()}`, { title: src.split('/').pop().split('?')[0], label: 'File', state: r?.ok ? 'done' : 'fail', text: r?.ok ? 'Sent to FluxGet' : (r?.error || 'FluxGet could not start this download.') })
+    renderDownloads()
   }
 
-  function track(jobId, title, label) {
-    const name = h('div', { class: 'title', style: 'padding:0' }, title)
-    const fill = h('i', { style: 'width:0%' })
-    const left = h('span', {}, 'Starting…')
-    const right = h('span', {}, label)
-    const body = h('div', { class: 'prog' }, name, h('div', { class: 'bar' }, fill), h('div', { class: 'meta' }, left, right))
-    frame(body, h('div', { class: 'foot' }, h('button', { class: 'link', onclick: () => send({ type: 'fg-open-app' }) }, 'Open FluxGet'), h('span')))
-    clearInterval(pollTimer)
+  function renderDownloads() {
+    if (active.size === 0) { dlBox.replaceChildren(); return }
+    dlBox.replaceChildren(...[
+      h('div', { class: 'label' }, busy() ? 'Downloading' : 'Downloads'),
+      ...[...active.entries()].map(([id, a]) => {
+        const item = h('div', { class: 'dl' }, h('div', { class: 'dl-name', title: a.title }, `${a.label} · ${a.title}`))
+        if (a.state === 'run') {
+          item.append(h('div', { class: 'bar' }, h('i', { style: `width:${Math.max(2, a.pct)}%` })), h('div', { class: 'meta' }, h('span', {}, a.text), h('span', {}, a.right || `${Math.round(a.pct)}%`)))
+        } else if (a.state === 'done') {
+          item.append(h('div', { class: 'dl-done' }, h('span', { class: 'done' }, svg(ICON_CHECK), a.text || 'Download complete'),
+            typeof id === 'number' ? h('span', { class: 'acts' },
+              h('button', { class: 'link', onclick: () => send({ type: 'fg-reveal', id }) }, 'Show in folder'),
+              h('button', { class: 'link', onclick: () => send({ type: 'fg-open-file', id }) }, 'Open')) : null))
+        } else {
+          item.append(h('div', { class: 'msg err', style: 'padding:6px 0 0' }, a.text))
+        }
+        return item
+      }),
+      busy() ? h('div', { class: 'hint' }, 'You can hide this panel — downloads continue in FluxGet.') : null,
+    ].filter(Boolean))
+  }
+
+  let polling = 0
+  function poll() {
+    if (polling) return
     const tick = async () => {
-      const r = await send({ type: 'fg-job', id: jobId })
-      if (!r?.ok) return
-      const j = r.job
-      const pct = j.totalBytes ? Math.min(100, (j.receivedBytes / j.totalBytes) * 100) : null
-      if (j.status === 'Completed') {
-        clearInterval(pollTimer)
-        body.replaceChildren(name, h('div', { class: 'done', style: 'margin-top:10px' }, svg(ICON_CHECK), 'Download complete'))
-        body.parentElement?.querySelector('.foot')?.replaceChildren(
-          h('button', { class: 'link', onclick: () => send({ type: 'fg-reveal', id: jobId }) }, 'Show in folder'),
-          h('button', { class: 'primary', onclick: () => send({ type: 'fg-open-file', id: jobId }) }, 'Open'))
-        return
+      for (const [id, a] of active) {
+        if (a.state !== 'run') continue
+        const r = await send({ type: 'fg-job', id })
+        if (!r?.ok) continue
+        const j = r.job
+        if (j.status === 'Completed') { a.state = 'done'; a.text = 'Download complete'; continue }
+        if (j.status === 'Failed' || j.status === 'NeedsAttention') { a.state = 'fail'; a.text = j.error || 'The download stopped.'; continue }
+        a.pct = j.totalBytes ? Math.min(100, (j.receivedBytes / j.totalBytes) * 100) : a.pct
+        a.text = j.phase || (j.totalBytes ? `${fmt(j.receivedBytes)} of ${fmt(j.totalBytes)}` : j.status === 'Queued' ? 'Waiting in queue' : 'Starting…')
+        a.right = j.speed > 0 ? `${fmt(j.speed)}/s` : ''
       }
-      if (j.status === 'Failed' || j.status === 'NeedsAttention') {
-        clearInterval(pollTimer)
-        body.append(h('div', { class: 'msg err', style: 'padding:8px 0 0' }, j.error || 'The download stopped.'))
-        return
-      }
-      fill.style.width = `${pct ?? 3}%`
-      left.textContent = j.phase || (j.totalBytes ? `${fmt(j.receivedBytes)} of ${fmt(j.totalBytes)}` : j.status === 'Queued' ? 'Waiting in queue' : 'Starting…')
-      right.textContent = j.speed > 0 ? `${fmt(j.speed)}/s` : label
+      updateRing()
+      if (open) renderDownloads()
+      if (!busy()) { clearInterval(polling); polling = 0 }
     }
+    polling = setInterval(tick, 1000)
     void tick()
-    pollTimer = setInterval(tick, 1000)
+  }
+
+  function updateRing() {
+    const running = [...active.values()].filter(a => a.state === 'run')
+    if (running.length) {
+      const pct = Math.round(running.reduce((t, a) => t + (a.pct || 0), 0) / running.length)
+      button.classList.add('busy')
+      button.style.setProperty('--p', String(pct))
+      label.textContent = `${pct}%`
+      button.title = `FluxGet: downloading ${pct}% — click to see progress`
+      clearTimeout(hideTimer)
+      if (target) schedule()
+    } else {
+      if (button.classList.contains('busy')) {
+        button.classList.remove('busy')
+        button.classList.add('finished')
+        label.textContent = 'Done'
+        setTimeout(() => { button.classList.remove('finished'); label.textContent = 'Download'; if (!open) hideButton() }, 4000)
+      }
+      button.title = 'Download with FluxGet'
+    }
   }
 })()

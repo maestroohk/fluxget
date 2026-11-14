@@ -118,11 +118,11 @@ export function App() {
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-bg/80 px-4 backdrop-blur sm:px-6">
           <div className="md:hidden"><Logo /></div>
           <h1 className="hidden text-[15px] font-semibold tracking-tight md:block">{title}</h1>
-          {!connected && <span className="inline-flex items-center gap-1.5 rounded-full bg-warn-soft px-2.5 py-1 text-[12px] text-warn"><WifiOff size={13} /> Reconnecting…</span>}
+          {!connected && <span className="inline-flex items-center gap-1.5 rounded-full bg-warn-soft px-2.5 py-1 text-[12px] text-warn" title="FluxGet's download service isn't responding. This page reconnects automatically."><WifiOff size={13} /> Not connected to FluxGet — retrying</span>}
           <div className="flex-1" />
           <Button variant="primary" onClick={() => openAdd()} title="Add (Ctrl+N)"><Plus size={16} /> <span className="hidden sm:inline">Add</span></Button>
         </header>
-        <main className="min-h-0 flex-1 overflow-hidden pb-16 md:pb-0">
+        <main className={cx('min-h-0 flex-1 overflow-hidden pb-16 transition-opacity md:pb-0', !connected && 'pointer-events-none opacity-60')} aria-busy={!connected}>
           {page === 'overview' && <Overview openAdd={openAdd} />}
           {page === 'downloads' && <Downloads openAdd={openAdd} />}
           {page === 'media' && <Media />}
