@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>fluxget.ico</ApplicationIcon>
     <AssemblyName>FluxGet</AssemblyName>
@@ -11,12 +12,14 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageReference Include="Velopack" Version="1.2.161" />
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FluxGet.Host\FluxGet.Host.csproj" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="fluxget.ico" />
+    <EmbeddedResource Include="fluxget.png" />
     <Content Include="..\..\web\dist\**" LinkBase="wwwroot" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\..\web\dist\index.html')" />
   </ItemGroup>
 </Project>

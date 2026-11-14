@@ -51,12 +51,24 @@ powershell -ExecutionPolicy Bypass -File scripts/package.ps1 -SignPfx C:\path	o\
 
 The password comes from `-SignPassword`, `FLUXGET_SIGN_PASSWORD`, or a `.pass` file next to the PFX. For Azure Trusted Signing set `FLUXGET_AZURE_SIGN_FILE` (Velopack's metadata JSON) instead; that mode signs every binary.
 
-Windows only stops showing SmartScreen warnings for a certificate issued by a trusted certificate authority: an OV/EV code-signing certificate, or Azure Trusted Signing (Microsoft's managed service). `scripts/new-dev-cert.ps1` creates a self-signed test certificate (as a PFX file only, never added to a Windows trust store) to exercise the pipeline. Installers signed with it show the signer as untrusted.
+Windows only stops showing SmartScreen warnings for a certificate it trusts. Free routes for this project:
+
+- **SignPath Foundation** signs open-source projects for free with its own trusted certificate (requirements: OSI licence, public repository, MFA for all members, a published code signing policy — see [docs/CODE_SIGNING_POLICY.md](docs/CODE_SIGNING_POLICY.md)). Apply at signpath.org.
+- **Microsoft Store**: individual developer registration is free and the Store signs MSIX packages itself.
+- Until then, `scripts/new-dev-cert.ps1` creates a self-signed test certificate (a PFX file only, never added to a Windows trust store) to exercise the pipeline. Installers signed with it show the signer as untrusted.
 
 ## Browser extension
 
-1. Open `chrome://extensions` (or `edge://extensions`), enable Developer mode, choose **Load unpacked** and select the `extension/` folder.
+Settings → *Use FluxGet in your browser* walks through each option and has an **Open folder** button for the installed extension.
+
+**Chrome, Edge, Brave, Opera, Vivaldi**
+
+1. Open `chrome://extensions` (or `edge://`, `brave://`, `opera://extensions`), enable Developer mode, choose **Load unpacked** and select the `extension` folder (installed next to FluxGet, or `extension/` in this repository).
 2. Click the FluxGet toolbar icon → **Connect**. FluxGet shows a 6-digit code; type it into the extension.
+
+**Firefox 128+**: the same extension loads from `about:debugging` → *Load Temporary Add-on* (until Firefox restarts). A permanent install needs Mozilla's free signing on addons.mozilla.org.
+
+**Any browser, no extension**: drag the *Send to FluxGet* button from Settings to the bookmarks bar. Clicking it on a video page opens FluxGet's quality picker; on other pages it adds a download.
 
 On YouTube and other supported video sites, hover over a video: a small **Download** button appears on the player. Click it to see the real qualities with sizes (4K, 1440p, 1080p, 720p…) and audio options (MP3 192/320 kbps, M4A). Pick one and the download starts in FluxGet, with live progress in the panel and **Show in folder** / **Open** when it finishes. The button can be turned off in the extension settings, and it is never shown on DRM-protected players.
 

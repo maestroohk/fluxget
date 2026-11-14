@@ -16,6 +16,7 @@ internal sealed class MainForm : Form
     private readonly JobManager _manager;
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(12, 13, 15) };
     private readonly NotifyIcon _tray;
+    private readonly Notifier _notifier;
     private readonly string _origin = $"http://127.0.0.1:{Program.Port}";
     private string? _pendingArgument;
     private bool _exiting;
@@ -36,6 +37,7 @@ internal sealed class MainForm : Form
 
         _tray = new NotifyIcon { Icon = Icon, Text = "FluxGet", Visible = true, ContextMenuStrip = BuildTrayMenu() };
         _tray.DoubleClick += (_, _) => ShowWindow();
+        _notifier = new Notifier(this, ShowWindow, id => _manager.Find(id));
 
         _manager.JobChanged += OnJobChanged;
         server.Services.GetRequiredService<AppSignals>().ActivateRequested += arg => BeginInvoke(() => Activate(arg));
@@ -135,6 +137,12 @@ internal sealed class MainForm : Form
                     _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "folder", path }));
                 }
                 break;
+            case "openExtensionFolder":
+                if (ExtensionFolder() is { } folder) Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { folder } });
+                break;
+            case "extensionInfo":
+                _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "extensionInfo", path = ExtensionFolder() }));
+                break;
             case "theme":
                 SetDarkTitleBar(doc.RootElement.TryGetProperty("dark", out var d) && d.GetBoolean());
                 break;
@@ -151,6 +159,7 @@ internal sealed class MainForm : Form
         {
             url = System.Web.HttpUtility.ParseQueryString(u.Query)["url"];
             if (u.Host.Equals("media", StringComparison.OrdinalIgnoreCase)) type = "media";
+            if (u.Host.Equals("send", StringComparison.OrdinalIgnoreCase) && url is not null && IsMediaSite(url)) type = "media";
         }
         else if (argument.StartsWith("http", StringComparison.OrdinalIgnoreCase) || argument.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
         {
@@ -158,6 +167,20 @@ internal sealed class MainForm : Form
         }
         if (url is not null && (url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || url.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase)))
             _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type, url }));
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex MediaSites = new(@"(^|\.)(youtube\.com|youtu\.be|facebook\.com|fb\.watch|instagram\.com|tiktok\.com|x\.com|twitter\.com|reddit\.com|vimeo\.com|twitch\.tv|dailymotion\.com|soundcloud\.com|bilibili\.com)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static bool IsMediaSite(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) && MediaSites.IsMatch(u.Host);
+
+    private static string? ExtensionFolder()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, "extension");
+            if (File.Exists(Path.Combine(candidate, "manifest.json"))) return candidate;
+        }
+        return null;
     }
 
     private void ShowWindow()
@@ -171,11 +194,10 @@ internal sealed class MainForm : Form
     private void OnJobChanged(Job job)
     {
         if (!_manager.Settings.NotifyOnComplete) return;
-        var name = job.FileName ?? "Download";
         if (job.Status == JobStatus.Completed && job.CompletedAt is { } done && DateTime.UtcNow - done < TimeSpan.FromSeconds(5))
-            BeginInvoke(() => _tray.ShowBalloonTip(4000, "Download complete", name, ToolTipIcon.Info));
+            BeginInvoke(() => _notifier.Completed(job));
         else if (job.Status == JobStatus.NeedsAttention)
-            BeginInvoke(() => _tray.ShowBalloonTip(5000, "Download needs attention", $"{name}: {job.Error}", ToolTipIcon.Warning));
+            BeginInvoke(() => _notifier.NeedsAttention(job));
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -202,7 +224,7 @@ internal sealed class MainForm : Form
             if (!_hintShown)
             {
                 _hintShown = true;
-                _tray.ShowBalloonTip(3000, "FluxGet is still running", "Downloads continue in the background. Right-click the tray icon to quit.", ToolTipIcon.Info);
+                _notifier.Info("FluxGet is still running", "Downloads continue in the background. Right-click the tray icon to quit.");
             }
             return;
         }

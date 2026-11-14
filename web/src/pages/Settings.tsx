@@ -5,6 +5,7 @@ import { setSettings, useStore } from '../store'
 import { ago, limitText, parseLimit } from '../format'
 import { Button, Card, Field, IconButton, inputClass, Segmented, Toggle } from '../ui'
 import { attempt } from '../components/toast'
+import { BrowserSetup } from '../components/BrowserSetup'
 
 type Theme = 'system' | 'light' | 'dark'
 
@@ -37,13 +38,15 @@ export function SettingsPage() {
   }, [])
 
   if (!draft) return null
+  const dirty = !!settings && (JSON.stringify({ ...draft, globalSpeedLimit: 0, torrentUploadLimit: 0 }) !== JSON.stringify({ ...settings, globalSpeedLimit: 0, torrentUploadLimit: 0 })
+    || parseLimit(limits.global) !== settings.globalSpeedLimit || parseLimit(limits.upload) !== settings.torrentUploadLimit)
   const save = () => attempt(async () => setSettings(await api.put<Settings>('/api/settings', {
     ...draft, globalSpeedLimit: parseLimit(limits.global), torrentUploadLimit: parseLimit(limits.upload),
   })), 'Settings saved')
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 sm:px-6">
+    <div className="relative h-full overflow-y-auto">
+      <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 pb-24 sm:px-6">
         <Group title="Downloads">
           <Field label="Download folder">
             <div className="flex gap-2">
@@ -72,8 +75,6 @@ export function SettingsPage() {
           </div>
         </Group>
 
-        <div className="flex justify-end"><Button variant="primary" onClick={save}>Save settings</Button></div>
-
         <Group title="Appearance">
           <Row label="Theme">
             <Segmented value={theme} onChange={t => { setTheme(t); applyTheme(t) }} options={[
@@ -84,9 +85,13 @@ export function SettingsPage() {
           </Row>
         </Group>
 
-        <Group title="Browser extension">
-          <p className="text-[13px] text-muted">Install the FluxGet extension in Chrome or Edge and choose <b>Connect</b>. A pairing code appears here; nothing on a web page can connect without it.</p>
-          {tokens.length === 0 ? <p className="text-[13px] text-faint">No browsers connected.</p> : tokens.map(t => (
+        <Group title="Use FluxGet in your browser">
+          <BrowserSetup />
+        </Group>
+
+        <Group title="Connected browsers">
+          <p className="text-[13px] text-muted">Each browser connects once with a code shown in FluxGet; web pages themselves can never connect.</p>
+          {tokens.length === 0 ? <p className="text-[13px] text-faint">No browsers connected yet.</p> : tokens.map(t => (
             <div key={t.id} className="flex items-center gap-3 rounded-lg border border-line px-3 py-2">
               <Puzzle size={16} className="text-muted" />
               <span className="flex-1 text-[13px]">{t.name} <span className="text-muted">· connected {ago(t.createdAt)}</span></span>
@@ -105,6 +110,14 @@ export function SettingsPage() {
           </dl>
         </Group>
       </div>
+      {dirty && (
+        <div className="sticky bottom-4 z-10 mx-auto flex w-[min(560px,calc(100%-32px))] items-center gap-3 rounded-xl border border-line bg-surface/95 px-4 py-3 shadow-pop backdrop-blur animate-rise">
+          <span className="size-2 rounded-full bg-accent" />
+          <span className="flex-1 text-[13px]">You have unsaved changes</span>
+          <Button variant="ghost" size="sm" onClick={() => { setDraft(settings); if (settings) setLimits({ global: limitText(settings.globalSpeedLimit), upload: limitText(settings.torrentUploadLimit) }) }}>Discard</Button>
+          <Button variant="primary" size="sm" onClick={save}>Save changes</Button>
+        </div>
+      )}
     </div>
   )
 }

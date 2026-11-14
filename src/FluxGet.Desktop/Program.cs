@@ -13,7 +13,13 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
-        VelopackApp.Build().Run();
+        VelopackApp.Build()
+            .OnBeforeUninstallFastCallback(_ =>
+            {
+                Notifier.Uninstall();
+                Protocol.Unregister();
+            })
+            .Run();
         using var mutex = new Mutex(true, @"Local\FluxGet.Desktop", out var first);
         var argument = args.FirstOrDefault();
         if (!first)

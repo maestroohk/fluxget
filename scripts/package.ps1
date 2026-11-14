@@ -25,6 +25,7 @@ dotnet publish src/FluxGet.Desktop -c Release -r $Runtime --self-contained true 
 New-Item -ItemType Directory -Force (Join-Path $publish 'tools') | Out-Null
 Copy-Item 'tools/bin/*' (Join-Path $publish 'tools') -Recurse -Force
 Copy-Item LICENSE, THIRD-PARTY-NOTICES.md $publish -Force
+Copy-Item extension (Join-Path $publish 'extension') -Recurse -Force
 
 dotnet tool update -g vpk --version 1.2.161 | Out-Host
 $signArgs = @()

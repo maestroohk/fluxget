@@ -58,11 +58,11 @@ try {
   }
 
   context = await chromium.launchPersistentContext(join(data, 'profile'), {
-    channel: process.env.E2E_CHANNEL || 'msedge',
+    ...(process.env.E2E_BROWSER_PATH ? { executablePath: process.env.E2E_BROWSER_PATH } : { channel: process.env.E2E_CHANNEL || 'msedge' }),
     headless: true,
     ignoreDefaultArgs: ['--disable-extensions'],
     acceptDownloads: true,
-    args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
+    args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`, '--disable-features=DisableLoadExtensionCommandLineSwitch'],
   })
   let [worker] = context.serviceWorkers()
   worker ??= await context.waitForEvent('serviceworker')

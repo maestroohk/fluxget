@@ -491,7 +491,8 @@
       ],
       "status": "done",
       "evidence": [
-        "code: light/dark tokens, system/light/dark switch, dark title bar sync"
+        "code: light/dark tokens, system/light/dark switch, dark title bar sync",
+        "manual 2026-11-14: toggle knob fixed (was centred and overflowing), native number spinners and select arrows restyled"
       ]
     },
     {
@@ -550,9 +551,9 @@
         "Windows toast/tray balloon on completion",
         "Can be disabled"
       ],
-      "status": "done",
+      "status": "verified",
       "evidence": [
-        "code: tray balloon on completion / needs attention, toggle in settings"
+        "manual 2026-11-14 (installed 0.3.0): Windows notification store shows a FluxGet toast \"Download complete\" with the file name, FluxGet logo and Open / Show in folder buttons, app registered as velopack.FluxGet with FluxGet icon"
       ]
     },
     {
@@ -957,6 +958,29 @@
       "status": "verified",
       "evidence": [
         "Published to https://github.com/maestroohk/fluxget (public) with main and development; tracked files audited: no secrets, media, databases or binaries"
+      ]
+    },
+    {
+      "id": "FG-034",
+      "milestone": "M3",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "send a page or video to FluxGet from any browser, even without the extension",
+      "value": "Works in every browser",
+      "deps": [
+        "FG-023"
+      ],
+      "criteria": [
+        "fluxget://send opens the quality picker for video sites and the add dialog otherwise",
+        "Bookmarklet available in Settings",
+        "Extension manifest loads in Chromium and declares Firefox support"
+      ],
+      "status": "done",
+      "evidence": [
+        "manual 2026-11-14 (installed 0.3.0): fluxget://send with a YouTube URL opened the Media page with all qualities",
+        "e2e (Edge): cross-browser manifest passes all 7 checks",
+        "unverified: Firefox (not installed here); Chrome 157 blocks command-line extension loading, so Chrome needs the manual Load unpacked check"
       ]
     }
   ]

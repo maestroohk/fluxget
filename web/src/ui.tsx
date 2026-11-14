@@ -164,8 +164,8 @@ export const inputClass = 'h-9 w-full rounded-lg border border-line bg-raised px
 export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}
-      className={cx('relative h-5 w-9 shrink-0 rounded-full transition-colors', checked ? 'bg-accent' : 'bg-line-strong')}>
-      <span className={cx('absolute top-0.5 size-4 rounded-full bg-white shadow transition-transform', checked ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+      className={cx('relative inline-block h-[22px] w-10 shrink-0 rounded-full p-0 transition-colors duration-200', checked ? 'bg-accent' : 'bg-line-strong')}>
+      <span className={cx('pointer-events-none absolute top-[3px] left-[3px] block size-4 rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/0.3)] transition-transform duration-200', checked ? 'translate-x-[18px]' : 'translate-x-0')} />
     </button>
   )
 }
