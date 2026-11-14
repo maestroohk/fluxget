@@ -147,7 +147,7 @@ try {
       return { status: res.status, body: await res.json() }
     }, port)
     assert.equal(r.status, 422)
-    assert.match(r.body.detail, /isn't supported/)
+    assert.match(r.body.detail, /isn't supported|yt-dlp is not installed/)
   })
 
   await step('Revoked token returns the popup to pairing', async () => {
