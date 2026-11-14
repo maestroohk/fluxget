@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Web build
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Engine and host tests
+        run: dotnet test tests/FluxGet.Engine.Tests -c Release --logger "trx;LogFileName=results.trx"
+      - name: Desktop build
+        if: runner.os == 'Windows'
+        run: dotnet build src/FluxGet.Desktop -c Release
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: tests/**/TestResults/*.trx
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: NuGet vulnerability scan
+        run: |
+          dotnet restore tests/FluxGet.Engine.Tests
+          dotnet list tests/FluxGet.Engine.Tests package --vulnerable --include-transitive | tee nuget-audit.txt
+          if grep -q "has the following vulnerable packages" nuget-audit.txt; then exit 1; fi
+      - name: npm audit
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+      - name: Docker image builds
+        run: docker build -t fluxget:ci .

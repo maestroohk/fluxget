@@ -13,6 +13,7 @@ public sealed class FluxGetHostOptions
     public string[] DevOrigins { get; set; } = ["http://localhost:5173", "http://127.0.0.1:5173"];
     public bool DevDashboard { get; set; }
     public string? ToolsDirectory { get; set; }
+    public string? DownloadDirectory { get; set; }
 
     public string ResolveDataDirectory() => Path.GetFullPath(DataDirectory ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FluxGet"));

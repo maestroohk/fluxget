@@ -40,7 +40,8 @@ public sealed class MediaRunner(YtDlp ytDlp) : IJobRunner
         args.AddRange(["--newline", "--progress", "--no-simulate", "--no-mtime", "--continue", "--retries", "10", "--fragment-retries", "10",
             "--progress-template", "download:FGP %(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(info.format_id)s",
             "--print", "after_move:FGFILE %(filepath)s",
-            "-o", Path.Combine(job.Directory, "%(title).150B [%(id)s].%(ext)s")]);
+            "-P", "home:" + job.Directory, "-P", "temp:" + TempDirectory(job),
+            "-o", OutputTemplate(o)]);
         if (OperatingSystem.IsWindows()) args.Add("--windows-filenames");
         var rate = new[] { job.SpeedLimit, ctx.GlobalLimiter.Rate }.Where(r => r > 0).DefaultIfEmpty(0).Min();
         if (rate > 0) args.AddRange(["--limit-rate", rate.ToString(CultureInfo.InvariantCulture)]);
@@ -90,6 +91,7 @@ public sealed class MediaRunner(YtDlp ytDlp) : IJobRunner
         {
             if (cookieFile is not null) TryDelete(cookieFile);
         }
+        TryDeleteDirectory(TempDirectory(job));
         if (final is null || !File.Exists(final)) throw new JobFailedException("yt-dlp finished but the output file was not found.");
         var size = new FileInfo(final).Length;
         job.FilePath = final;
@@ -201,8 +203,26 @@ public sealed class MediaRunner(YtDlp ytDlp) : IJobRunner
         return (codec, duration);
     }
 
+    internal static string OutputTemplate(MediaOptions o) => o.Mode == "audio"
+        ? (o.AudioQuality is { } q && o.AudioFormat is not ("flac" or "wav") ? $"%(title).150B [{q}k] [%(id)s].%(ext)s" : "%(title).150B [%(id)s].%(ext)s")
+        : "%(title).150B [%(height)sp] [%(id)s].%(ext)s";
+
+    private static string TempDirectory(Job job) => Path.Combine(job.Directory, ".fluxget-tmp", job.Id.ToString(CultureInfo.InvariantCulture));
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+            var parent = Path.GetDirectoryName(path)!;
+            if (Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any()) Directory.Delete(parent);
+        }
+        catch (Exception) { }
+    }
+
     public Task CleanupAsync(Job job, bool deleteFiles)
     {
+        TryDeleteDirectory(TempDirectory(job));
         if (job.Status == JobStatus.Completed) return Task.CompletedTask;
         var id = job.GetOptions<MediaOptions>()?.MediaId;
         if (string.IsNullOrEmpty(id) || !Directory.Exists(job.Directory)) return Task.CompletedTask;

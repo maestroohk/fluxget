@@ -44,6 +44,8 @@ public static class FluxGetServer
             ToolsDirectory = options.ToolsDirectory
         };
         var store = new JobStore(Path.Combine(dataDir, "fluxget.db"));
+        if (options.DownloadDirectory is { Length: > 0 } initialDir && store.GetSetting<EngineSettings>("engine") is null)
+            store.SetSetting("engine", new EngineSettings { DownloadDirectory = initialDir });
         var tools = new ToolLocator(options.ToolsDirectory);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(engineOptions);
@@ -77,7 +79,12 @@ public static class FluxGetServer
         {
             var files = new PhysicalFileProvider(webRoot);
             app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
-            app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = files,
+                OnPrepareResponse = c => c.Context.Response.Headers.CacheControl =
+                    c.Context.Request.Path.StartsWithSegments("/assets") ? "public, max-age=31536000, immutable" : "no-cache"
+            });
         }
         if (options.DevDashboard && FindUp("docs", "progress.json") is { } docs)
         {
@@ -98,6 +105,7 @@ public static class FluxGetServer
             {
                 if (ctx.Request.Path.StartsWithSegments("/api")) { ctx.Response.StatusCode = 404; return; }
                 ctx.Response.ContentType = "text/html; charset=utf-8";
+                ctx.Response.Headers.CacheControl = "no-cache";
                 await ctx.Response.SendFileAsync(Path.Combine(webRoot, "index.html"));
             });
 

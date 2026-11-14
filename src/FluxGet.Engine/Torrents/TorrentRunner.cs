@@ -99,6 +99,7 @@ public sealed class TorrentRunner : IJobRunner, IAsyncDisposable
         }
 
         var appliedSkip = false;
+        var completed = false;
         try
         {
             await manager.StartAsync();
@@ -144,7 +145,11 @@ public sealed class TorrentRunner : IJobRunner, IAsyncDisposable
                 if (finished)
                 {
                     job.FilePath = Path.Combine(job.Directory, manager.Torrent!.Name);
-                    if (ctx.Settings.SeedRatio <= 0 || ratio >= ctx.Settings.SeedRatio) break;
+                    if (ctx.Settings.SeedRatio <= 0 || ratio >= ctx.Settings.SeedRatio)
+                    {
+                        completed = true;
+                        break;
+                    }
                     ctx.SetStatus(JobStatus.Seeding, $"Seeding until ratio {ctx.Settings.SeedRatio:0.##}");
                 }
                 else
@@ -164,6 +169,15 @@ public sealed class TorrentRunner : IJobRunner, IAsyncDisposable
         finally
         {
             try { await manager.StopAsync(TimeSpan.FromSeconds(10)); } catch (Exception) { }
+        }
+        if (completed) RemoveSkippedFiles(manager);
+    }
+
+    private static void RemoveSkippedFiles(TorrentManager manager)
+    {
+        foreach (var f in manager.Files.Where(f => f.Priority == Priority.DoNotDownload))
+        {
+            try { if (File.Exists(f.FullPath)) File.Delete(f.FullPath); } catch (Exception) { }
         }
     }
 

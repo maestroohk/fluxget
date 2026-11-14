@@ -14,6 +14,13 @@ public static class UrlGuard
         return uri;
     }
 
+    public static async Task EnsurePublicAsync(Uri uri, CancellationToken ct)
+    {
+        var addresses = IPAddress.TryParse(uri.Host.Trim('[', ']'), out var ip) ? [ip] : await Dns.GetHostAddressesAsync(uri.Host, ct);
+        if (addresses.Length == 0 || addresses.Any(IsPrivate))
+            throw new ArgumentException("Addresses on private or local networks are not allowed on this server.");
+    }
+
     public static bool IsPrivate(IPAddress ip)
     {
         if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();

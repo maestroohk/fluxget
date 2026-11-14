@@ -1,0 +1,13 @@
+**/bin
+**/obj
+**/node_modules
+web/dist
+artifacts
+publish
+Releases
+tools/bin
+.git
+.vs
+bench
+tests
+extension

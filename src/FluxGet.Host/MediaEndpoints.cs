@@ -17,10 +17,11 @@ public static class MediaEndpoints
     {
         var api = app.MapGroup("/api/media");
 
-        api.MapPost("/analyze", async (AnalyzeBody body, YtDlp yt, CancellationToken ct) =>
+        api.MapPost("/analyze", async (AnalyzeBody body, YtDlp yt, FluxGetHostOptions o, CancellationToken ct) =>
         {
             try
             {
+                if (o.Mode == HostMode.Hosted) await UrlGuard.EnsurePublicAsync(UrlGuard.Parse(body.Url), ct);
                 return Results.Ok(await yt.AnalyzeAsync(body.Url, body.Start ?? 1, ct));
             }
             catch (Exception e) when (e is MediaException or ArgumentException or TimeoutException)
@@ -29,8 +30,19 @@ public static class MediaEndpoints
             }
         });
 
-        api.MapPost("/download", (MediaDownloadBody body, JobManager m) =>
+        api.MapPost("/download", async (MediaDownloadBody body, JobManager m, FluxGetHostOptions o, CancellationToken ct) =>
         {
+            if (o.Mode == HostMode.Hosted)
+            {
+                try
+                {
+                    foreach (var item in body.Items ?? []) await UrlGuard.EnsurePublicAsync(UrlGuard.Parse(item.Url), ct);
+                }
+                catch (Exception e) when (e is ArgumentException or System.Net.Sockets.SocketException)
+                {
+                    return Results.Problem(e.Message, statusCode: 400);
+                }
+            }
             if (body.Items is not { Length: > 0 }) return Results.Problem("Choose at least one item.", statusCode: 400);
             if (body.Mode is not ("video" or "audio")) return Results.Problem("Mode must be video or audio.", statusCode: 400);
             var container = body.Container ?? "mp4";

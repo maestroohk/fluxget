@@ -31,8 +31,9 @@ interface MediaInfo {
 }
 
 const AUDIO_FORMATS = [
-  { value: 'mp3', label: 'MP3', qualities: ['320', '256', '192', '128'] },
-  { value: 'm4a', label: 'M4A (AAC)', qualities: ['256', '192', '128'] },
+  { value: 'mp3', label: 'MP3', qualities: ['320', '256', '192', '128', '96'] },
+  { value: 'm4a', label: 'M4A', qualities: ['256', '192', '128'] },
+  { value: 'aac', label: 'AAC', qualities: ['256', '192', '128'] },
   { value: 'opus', label: 'Opus', qualities: ['160', '128', '96'] },
   { value: 'flac', label: 'FLAC', qualities: [] },
   { value: 'wav', label: 'WAV', qualities: [] },
@@ -86,14 +87,14 @@ export function Media() {
         </section>
 
         <section>
-          <SectionTitle aside={<Button size="sm" variant="ghost" onClick={() => setConvert(true)}><Wand2 size={14} /> Convert a file to audio</Button>}>Media downloads</SectionTitle>
+          <SectionTitle aside={<Button size="sm" variant="ghost" onClick={() => setConvert(true)}><Wand2 size={14} /> Convert to audio</Button>}>Media downloads</SectionTitle>
           <Card className="h-[420px] overflow-hidden">
             <JobList jobs={media} onOpen={j => setOpen(j.id)} empty={<Empty icon={<Film size={20} />} title="No media downloads">Find a video above and choose its quality. Finished files appear in Completed.</Empty>} />
           </Card>
         </section>
       </div>
       <JobDetail jobId={open} onClose={() => setOpen(null)} />
-      <ConvertDialog open={convert} onClose={() => setConvert(false)} />
+      <ConvertDialog open={convert} initialUrl={/^https?:\/\//i.test(url.trim()) ? url.trim() : undefined} onClose={() => setConvert(false)} />
     </div>
   )
 }
@@ -249,42 +250,82 @@ function MediaResult({ info, onDone }: { info: MediaInfo; onDone: () => void }) 
 const label = (h: number) => (h >= 2160 ? `${h >= 4320 ? '8K' : '4K'} ${h}p` : h >= 1440 ? `QHD ${h}p` : `${h}p`)
 const codec = (c: string) => (c.startsWith('avc') ? 'H.264' : c.startsWith('av01') ? 'AV1' : c.startsWith('vp9') || c.startsWith('vp09') ? 'VP9' : c.startsWith('hev') || c.startsWith('hvc') ? 'HEVC' : c)
 
-function ConvertDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function ConvertDialog({ open, onClose, initialUrl }: { open: boolean; onClose: () => void; initialUrl?: string }) {
+  const [source, setSource] = useState<'link' | 'file'>('link')
+  const [link, setLink] = useState('')
   const [files, setFiles] = useState<Job[]>([])
   const [jobId, setJobId] = useState<number | null>(null)
-  const [format, setFormat] = useState('mp3')
+  const [formats, setFormats] = useState<string[]>(['mp3'])
   const [quality, setQuality] = useState('192')
+  const [busy, setBusy] = useState(false)
   useEffect(() => {
     if (!open) return
+    if (initialUrl) { setLink(initialUrl); setSource('link') }
     void api.get<{ items: Job[] }>('/api/jobs/completed?limit=200').then(r => {
-      const vids = r.items.filter(j => /\.(mp4|mkv|webm|mov|m4v|avi|flv|ts)$/i.test(j.filePath ?? ''))
+      const vids = r.items.filter(j => /\.(mp4|mkv|webm|mov|m4v|avi|flv|ts|m4a|mp3|opus|ogg|flac|wav|aac)$/i.test(j.filePath ?? ''))
       setFiles(vids)
       setJobId(vids[0]?.id ?? null)
     })
-  }, [open])
-  const fmt = AUDIO_FORMATS.find(f => f.value === format)!
+  }, [open, initialUrl])
+  const lossy = formats.some(f => AUDIO_FORMATS.find(x => x.value === f)!.qualities.length > 0)
+  const qualities = ['320', '256', '192', '160', '128', '96']
+  const toggle = (f: string) => setFormats(list => list.includes(f) ? (list.length > 1 ? list.filter(x => x !== f) : list) : [...list, f])
+  const qualityFor = (f: string) => {
+    const q = AUDIO_FORMATS.find(x => x.value === f)!.qualities
+    if (!q.length) return null
+    return q.includes(quality) ? quality : q.reduce((best, x) => Math.abs(+x - +quality) < Math.abs(+best - +quality) ? x : best, q[0])
+  }
+  const urls = link.split(/\s+/).filter(u => /^https?:\/\//i.test(u))
+  const submit = async () => {
+    setBusy(true)
+    const ok = await attempt(async () => {
+      for (const f of formats) {
+        if (source === 'link') {
+          await api.post('/api/media/download', { items: urls.map(u => ({ url: u })), mode: 'audio', audioFormat: f, audioQuality: qualityFor(f) })
+        } else {
+          await api.post('/api/media/convert', { jobId, audioFormat: f, audioQuality: qualityFor(f) })
+        }
+      }
+    }, formats.length * (source === 'link' ? urls.length : 1) > 1 ? `Queued ${formats.length * (source === 'link' ? urls.length : 1)} audio jobs` : 'Audio job queued')
+    setBusy(false)
+    if (ok) onClose()
+  }
+  const ready = source === 'link' ? urls.length > 0 : jobId != null
   return (
-    <Modal open={open} onClose={onClose} title="Convert a video to audio" footer={<>
+    <Modal open={open} onClose={onClose} title="Convert to audio" footer={<>
       <Button variant="ghost" onClick={onClose}>Cancel</Button>
-      <Button variant="primary" disabled={!jobId} onClick={async () => {
-        if (await attempt(() => api.post('/api/media/convert', { jobId, audioFormat: format, audioQuality: fmt.qualities.length ? quality : null }), 'Conversion queued')) onClose()
-      }}>Convert</Button>
+      <Button variant="primary" disabled={!ready || busy} onClick={submit}>{formats.length > 1 ? `Create ${formats.length} files` : `Convert to ${AUDIO_FORMATS.find(f => f.value === formats[0])!.label}`}</Button>
     </>}>
-      {files.length === 0 ? <p className="text-[13px] text-muted">No finished video files yet. Download a video first, then convert it here.</p> : (
-        <div className="space-y-4">
-          <Field label="Video">
+      <div className="space-y-4">
+        <Segmented value={source} onChange={setSource} options={[{ value: 'link', label: 'From a link' }, { value: 'file', label: 'From a downloaded file' }]} />
+        {source === 'link' ? (
+          <Field label="Video or song link" hint="YouTube, SoundCloud, TikTok and other supported sites. Paste several links on separate lines to convert them all. Only the audio stream is downloaded.">
+            <textarea className={cx(inputClass, 'h-auto min-h-[72px] py-2 font-mono text-[12.5px]')} rows={3} placeholder="https://www.youtube.com/watch?v=…" value={link} onChange={e => setLink(e.target.value)} />
+          </Field>
+        ) : files.length === 0 ? <p className="text-[13px] text-muted">No finished video or audio files yet. Use "From a link" or download something first.</p> : (
+          <Field label="File">
             <select className={inputClass} value={jobId ?? ''} onChange={e => setJobId(Number(e.target.value))}>
               {files.map(f => <option key={f.id} value={f.id}>{f.fileName ?? f.filePath}</option>)}
             </select>
           </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Format"><select className={inputClass} value={format} onChange={e => setFormat(e.target.value)}>{AUDIO_FORMATS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></Field>
-            <Field label="Quality"><select className={inputClass} value={quality} disabled={!fmt.qualities.length} onChange={e => setQuality(e.target.value)}>{fmt.qualities.length ? fmt.qualities.map(q => <option key={q} value={q}>{q} kbps</option>) : <option>Lossless</option>}</select></Field>
+        )}
+        <Field label="Formats" hint="Choose one or more; each produces its own file.">
+          <div className="flex flex-wrap gap-1.5">
+            {AUDIO_FORMATS.map(f => (
+              <button key={f.value} type="button" onClick={() => toggle(f.value)} aria-pressed={formats.includes(f.value)}
+                className={cx('h-8 rounded-lg border px-3 text-[12.5px] font-medium transition', formats.includes(f.value) ? 'border-ink bg-ink text-bg' : 'border-line text-muted hover:border-line-strong hover:text-ink')}>
+                {f.label}
+              </button>
+            ))}
           </div>
-          <p className="text-[12px] text-muted">If the video's audio already matches the chosen format (for example AAC into M4A), it is copied without re-encoding.</p>
-        </div>
-      )}
+        </Field>
+        <Field label="Quality" hint={lossy ? 'Applies to MP3, M4A, AAC and Opus (nearest supported bitrate). FLAC and WAV are lossless.' : 'FLAC and WAV are lossless — no bitrate to choose.'}>
+          <select className={inputClass + ' sm:w-56'} value={quality} disabled={!lossy} onChange={e => setQuality(e.target.value)}>
+            {qualities.map(q => <option key={q} value={q}>{q} kbps{q === '320' ? ' (best)' : q === '192' ? ' (recommended)' : ''}</option>)}
+          </select>
+        </Field>
+        <p className="text-[12px] text-muted">When the source audio already matches a format (for example AAC into M4A), it is copied without re-encoding, so quality is preserved.</p>
+      </div>
     </Modal>
   )
 }
-

@@ -170,3 +170,13 @@ public sealed class MediaParsingTests
     public void Errors_are_explained(string stderr, string expected) =>
         Assert.Contains(expected, FluxGet.Engine.Media.YtDlp.FriendlyError(stderr));
 }
+
+public sealed class MediaNamingTests
+{
+    [Theory]
+    [InlineData("audio", "mp3", "192", "%(title).150B [192k] [%(id)s].%(ext)s")]
+    [InlineData("audio", "flac", "192", "%(title).150B [%(id)s].%(ext)s")]
+    [InlineData("video", "mp3", null, "%(title).150B [%(height)sp] [%(id)s].%(ext)s")]
+    public void Output_names_carry_the_real_quality(string mode, string format, string? quality, string expected) =>
+        Assert.Equal(expected, FluxGet.Engine.Media.MediaRunner.OutputTemplate(new FluxGet.Engine.Media.MediaOptions { Mode = mode, AudioFormat = format, AudioQuality = quality }));
+}
