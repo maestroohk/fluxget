@@ -6,11 +6,11 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxGet.Engine\FluxGet.Engine.csproj" />
     <ProjectReference Include="..\FluxGet.Testing\FluxGet.Testing.csproj" />
+    <ProjectReference Include="..\..\src\FluxGet.Host\FluxGet.Host.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

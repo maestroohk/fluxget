@@ -37,7 +37,7 @@ public sealed class Segment
     public long End { get; set; }
     public long Received;
     internal long Next;
-    internal bool Active;
+    public bool Active { get; internal set; }
 
     public long Length => End < 0 ? -1 : End - Start + 1;
     public bool IsComplete => End >= 0 && Received >= End - Start + 1;
@@ -71,7 +71,7 @@ public sealed class Job
 
     public List<Segment> Segments { get; set; } = [];
     internal IReadOnlyDictionary<string, string>? RequestHeaders { get; set; }
-    internal readonly object Gate = new();
+    public readonly object Gate = new();
 
     public double Speed { get; internal set; }
     public double UploadSpeed { get; internal set; }
