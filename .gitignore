@@ -22,3 +22,4 @@ cookies*.txt
 TestResults/
 coverage/
 bench/results/*.tmp
+*.tsbuildinfo
