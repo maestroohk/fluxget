@@ -9,6 +9,7 @@ FluxGet is a personal download manager: segmented HTTP/HTTPS downloads, media ex
 | `src/FluxGet.Engine` | Everything that moves bytes. Job store (SQLite), queue + scheduler, segmented HTTP downloader, bandwidth limiter, media jobs (yt-dlp/FFmpeg subprocesses), torrent jobs (MonoTorrent). No ASP.NET dependency. |
 | `src/FluxGet.Host` | ASP.NET Core local API: REST + Server-Sent Events, session/pairing auth, serves the built web UI. Runs inside the desktop app or headless (`FluxGet.Host.exe`, Docker). |
 | `src/FluxGet.Desktop` | Windows shell: WinForms window hosting WebView2, tray icon, single instance, `fluxget://` protocol, Velopack install/update. Starts the Host in-process. |
+| `src/FluxGet.Desktop/Player` | Media player: LibVLC engine (LibVLCSharp), native video surface placed over the Player screen, fullscreen window with a floating control bar, always-on-top mini player, queue, resume positions. |
 | `web/` | React + TypeScript + Vite + Tailwind UI. Same build is used by the desktop window and by a regular browser (web interface). |
 | `extension/` | Manifest V3 extension for Chrome/Edge (Firefox later). Sends jobs to the Host over `127.0.0.1` with a paired token. |
 | `tests/` | xUnit engine tests against a controllable in-process HTTP server (`FluxGet.Testing`). |
@@ -221,11 +222,36 @@ flowchart TD
 
 Persisted offsets are always written *after* the file data they describe has been flushed, so a crash can lose at most the last checkpoint interval of progress, never correctness.
 
+## Player
+
+```mermaid
+flowchart LR
+  ui[Player screen<br/>React controls, library, settings] -- postMessage commands --> pc[PlayerController]
+  pc -- state 4x per second --> ui
+  pc --> vlc[LibVLC MediaPlayer<br/>d3d11 hardware decoding]
+  vlc --> vv[VideoView HWND]
+  vv -. reparented, no restart .-> fs[Fullscreen window<br/>+ floating WebView2 control bar]
+  vv -. reparented, no restart .-> mini[Mini player<br/>always on top]
+  pc --> store[(SQLite playback table<br/>resume, recently played)]
+  ui -- /api/player/library --> host[Host]
+  host --> store
+  vlc -- /preview/{id} contiguous prefix --> host
+  ui -- /api/subtitles --> tr[Transcriber<br/>FFmpeg + whisper.cpp]
+  tr -- .srt next to the media --> pc
+```
+
+The WebView2 UI cannot draw over a native video window (the airspace problem), so the Player screen reports the rectangle of its video stage and the desktop shell positions LibVLC's window exactly there. Menus that would overlap the video live in the side panel; in fullscreen the controls are a separate small borderless WebView2 window floating above the video. Switching between embedded, fullscreen and mini player moves the same native video window between parents, so playback never restarts.
+
+Partially downloaded files are previewed through `/preview/{id}`, which serves only the contiguous prefix of bytes that has been written to disk (never unwritten gaps between segments) and requires a short-lived token. Formats that need the end of the file first (MP4 with the index at the end) fail cleanly and play once the download finishes.
+
+Offline subtitles: FFmpeg extracts 16 kHz mono audio, whisper.cpp (Whisper.net) transcribes it on the CPU with half the cores at most, and an SRT is written next to the media (`name.en.srt`). The speech model (Tiny 75 MB, Base 142 MB, Small 466 MB) downloads once from Hugging Face and is verified against its published SHA-256.
+
 ## Data model (SQLite)
 
 - `jobs` — id, kind (http/media/torrent), url, status, file name, directory, total/received bytes, validators (etag, last_modified), resumable flag, priority, per-job speed limit, checksum, schedule flag, error, options JSON, timestamps. Indexed on (status, priority, created_at).
 - `segments` — job_id, idx, start, end, received.
 - `settings` — key/value JSON.
 - `tokens` — hashed extension tokens.
+- `playback` — path, title, position, duration, last played (resume and recently played).
 
 Request headers supplied by the extension (cookies, referrer) are held in memory only and never written to the database or logs.

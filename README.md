@@ -6,6 +6,8 @@ A fast, reliable download manager for Windows: segmented HTTP downloads that sur
 - **Media** from YouTube and other sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp): pick a real resolution, container or audio format; whole playlists and channels; audio extraction and conversion with FFmpeg (stream copy when no re-encode is needed).
 - **Torrents** via [MonoTorrent](https://github.com/alanmcgovern/monotorrent): magnet links and .torrent files, file selection, peers, upload limit, seed ratio.
 - **Browser extension** (Chrome, Edge) that sends links, captured downloads and page videos to FluxGet after a one-time pairing.
+- **Built-in player** (LibVLC): plays finished downloads and local files, MP4/MKV/WebM/AVI and MP3/FLAC/M4A/Opus, embedded and external subtitles (SRT, ASS, VTT), audio tracks, speed 0.25–4×, frame stepping, picture controls, fullscreen, an always-on-top mini player, queue, resume and a media library. Partially downloaded files can be previewed when their beginning is on disk.
+- **Offline subtitles**: generates subtitles with whisper.cpp on your own computer (no upload, no account), optionally translated to English; the speech model downloads once (75–466 MB).
 - **Queue, schedule and bandwidth control**: concurrency limit, priorities, time windows, global and per-download speed limits, checksum verification.
 
 Architecture, diagrams and decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DECISIONS.md](docs/DECISIONS.md). Measured performance: [bench/results.md](bench/results.md).
@@ -39,7 +41,7 @@ For UI work, run `npm run dev` in `web/` (Vite on port 5173, proxied to the host
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1 -Version 0.1.0
 ```
 
-Produces a per-user Velopack installer (`artifacts/releases/FluxGet-win-Setup.exe`, about 200 MB), a portable zip, the update feed and `FluxGet-extension-<version>.zip`. It installs to `%LOCALAPPDATA%\FluxGet` with Start menu and desktop shortcuts; downloads, settings and the database live separately in `%LOCALAPPDATA%\FluxGetData`, so uninstalling or updating never deletes them.
+Produces a per-user Velopack installer (`artifacts/releases/FluxGet-win-Setup.exe`, about 250 MB; the media player's LibVLC engine accounts for most of the increase over 0.3), a portable zip, the update feed and `FluxGet-extension-<version>.zip`. It installs to `%LOCALAPPDATA%\FluxGet` with Start menu and desktop shortcuts; downloads, settings and the database live separately in `%LOCALAPPDATA%\FluxGetData`, so uninstalling or updating never deletes them.
 
 ### Code signing
 
@@ -117,6 +119,8 @@ cd e2e && npm ci && node extension.test.mjs
 
 The engine tests run against a deliberately misbehaving local HTTP server (ignored ranges, wrong `Content-Range`, dropped connections, throttling, connection limits, changed files, expired links). The e2e test loads the real extension into Microsoft Edge and drives pairing, download capture and the popup against a real FluxGet host.
 
+The player is tested through the real Windows UI with `FluxGet.exe --player-selftest <samples folder> <output folder>`, which plays sample files, switches fullscreen and mini player, loads subtitles, generates subtitles and checks screenshots; results are in [bench/player-results.md](bench/player-results.md).
+
 `scripts/verify.ps1` runs everything and records the result in `docs/build-status.json`, which the progress dashboard reads.
 
 ## Known limitations
@@ -126,6 +130,9 @@ The engine tests run against a deliberately misbehaving local HTTP server (ignor
 - MonoTorrent 3.0.2 creates deselected files at full length when they share a piece with a selected file; FluxGet deletes deselected files once the torrent finishes.
 - Media progress for video+audio downloads grows as yt-dlp starts each stream, because the second stream's size is only known when it starts.
 - Firefox is not packaged yet; the extension uses only standard WebExtension APIs.
+- Preview during download works only for single-stream direct downloads whose beginning has been downloaded, and not for MP4 files that keep their index at the end. Media (yt-dlp) and torrent downloads play once finished.
+- Rotating the picture, switching hardware decoding or changing subtitle size reopens the file at the same position (a short pause).
+- Offline subtitle generation uses the CPU; the Small model takes several times the clip length on slower machines.
 
 ## License
 

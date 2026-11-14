@@ -59,3 +59,15 @@ Velopack signs every binary by default, which would put FluxGet's signature on y
 
 ## D-018 In-page download panel instead of a separate window (2026-11-14)
 Like IDM, the extension adds a Download button on supported video players. Its quality panel renders inside a closed Shadow DOM, so site styles cannot break it, and talks to FluxGet only through the extension's background worker, so web pages never see the API token.
+
+## D-019 Playback engine: LibVLC via LibVLCSharp (2026-11-14)
+Compared libmpv, LibVLC, an FFmpeg-based custom player and WebView2's HTML5 video. LibVLC 3.0.24 + LibVLCSharp 3.10.2 (LGPL-2.1, maintained, official NuGet packages with a WinForms VideoView, d3d11 hardware decoding, libass for ASS/SRT/VTT, track and delay APIs, speed, frame stepping, adjust filters). libmpv is excellent but the available Windows builds include GPL components and there is no maintained .NET package; HTML5 video lacks AC3/DTS, ASS styling and audio-track switching; a custom FFmpeg player would mean writing a renderer, A/V sync and subtitle rendering. LibVLC is loaded dynamically from unmodified DLLs; FluxGet stays MIT. The bundle excludes VLC's encoders (including GPL x264/x265), stream output, visualisations, GUI and Lua plugins: 87 MB instead of 109 MB, x64 only.
+
+## D-020 Native video surface over the WebView2 UI (2026-11-14)
+The player UI is React like the rest of FluxGet, but video is drawn by LibVLC into a native window placed over the stage rectangle the page reports. Fullscreen uses a separate borderless window plus a small floating WebView2 control bar; the mini player uses native controls. The same video window is reparented between them. Lesson from testing: the destination window's handle must exist before reparenting, otherwise WinForms recreates the video window and LibVLC keeps drawing into the destroyed one (black video).
+
+## D-021 Offline subtitles with whisper.cpp (2026-11-14)
+Whisper.net 1.9.1 (MIT) wraps whisper.cpp (MIT); the OpenAI Whisper weights are MIT. Everything runs on the user's CPU; nothing is uploaded. Models download on first use (not bundled, to keep the installer size unchanged) and are checked against Hugging Face's published SHA-256. Measured: Base model, 15 s English clip, 31/33 reference words, about 20 s on this machine including the one-time download.
+
+## D-022 Startup without a blank window (2026-11-14)
+The window used to appear empty while the local service and WebView2 started one after the other. Now the service and WebView2 start in parallel, a native splash is painted immediately and stays until the web UI reports it has rendered, and notification/branding setup runs after the window is shown. Measured: window with splash at 0.4–0.5 s, UI ready at about 1.2 s.

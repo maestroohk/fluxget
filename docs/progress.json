@@ -1,6 +1,6 @@
 {
   "updated": "2026-11-14",
-  "currentMilestone": "M6",
+  "currentMilestone": "M7",
   "rules": "Completion = verified story points / total story points. A story counts only when status is 'verified' and every acceptance criterion has evidence (a passing test name or a recorded manual check). Points are fixed when a story is created.",
   "milestones": [
     {
@@ -32,6 +32,11 @@
       "id": "M6",
       "name": "Ship",
       "goal": "Installer, updates, CI, security checks, benchmarks, hosted worker"
+    },
+    {
+      "id": "M7",
+      "name": "Player",
+      "goal": "Integrated media player with subtitles, mini player and library"
     }
   ],
   "risks": [
@@ -1003,6 +1008,322 @@
       "status": "verified",
       "evidence": [
         "manual 2026-11-14: installed 0.3.2 found a 0.3.3 feed, downloaded it in the background, showed the in-app banner and a 'ready' notification; Restart to update closed, applied and relaunched 0.3.3 with FluxGetData intact"
+      ]
+    },
+    {
+      "id": "FG-070",
+      "milestone": "M7",
+      "points": 5,
+      "priority": "P0",
+      "role": "user",
+      "goal": "play completed downloads and local video files inside FluxGet",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "LibVLC engine bundled and licensed correctly",
+        "MP4, MKV, WebM play",
+        "Video surface fits the Player screen"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: MP4 plays, MKV plays, WebM plays, Embedded video renders"
+      ]
+    },
+    {
+      "id": "FG-071",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P0",
+      "role": "user",
+      "goal": "play audio files",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "MP3, FLAC, M4A, Opus play",
+        "Audio-only view"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: MP3 plays, FLAC plays"
+      ]
+    },
+    {
+      "id": "FG-072",
+      "milestone": "M7",
+      "points": 5,
+      "priority": "P0",
+      "role": "user",
+      "goal": "control playback with a modern player UI",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Play/pause, timeline seek, time, volume, mute, speed 0.25–2× and finer",
+        "Keyboard shortcuts with a help sheet",
+        "Frame stepping"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: seek 33–166 ms, speed 0.25/1.5/2/1, volume and mute, frame step"
+      ]
+    },
+    {
+      "id": "FG-073",
+      "milestone": "M7",
+      "points": 5,
+      "priority": "P0",
+      "role": "user",
+      "goal": "use embedded and external subtitles",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Embedded tracks listed and selectable",
+        "SRT, ASS, VTT files load",
+        "Subtitle delay and size",
+        "Drop a subtitle file onto the player"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: embedded subtitle, external SRT/ASS/VTT, subtitle delay, drop subtitle file"
+      ]
+    },
+    {
+      "id": "FG-074",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "switch audio tracks and fix audio sync",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Multiple tracks listed and switchable",
+        "Audio delay adjustable"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: MKV with 2 audio tracks, switch track, audio sync −0.2 s"
+      ]
+    },
+    {
+      "id": "FG-075",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "queue several files and move through them",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Next/previous",
+        "Jump to item",
+        "Add files to the queue"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: queue next/previous, jump to item 3"
+      ]
+    },
+    {
+      "id": "FG-076",
+      "milestone": "M7",
+      "points": 5,
+      "priority": "P0",
+      "role": "user",
+      "goal": "watch fullscreen and in an always-on-top mini player without restarting playback",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Fullscreen with auto-hiding controls",
+        "Resizable always-on-top mini player",
+        "Playback continues across switches"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: fullscreen keeps playing, mini player on top and keeps playing, video renders after switches"
+      ]
+    },
+    {
+      "id": "FG-077",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "resume videos where I left off and see recently played media",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Position saved every 5 s and on stop",
+        "Reopen resumes",
+        "Start over option"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "check: resume reopened at 2:06 after stopping at 2:00"
+      ]
+    },
+    {
+      "id": "FG-078",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "browse my downloaded media in a library",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Search, video/audio filter, sort by date/size/duration/played",
+        "Remove from library keeps the file"
+      ],
+      "status": "done",
+      "evidence": [
+        "code: /api/player/library and Library tab",
+        "unverified: library filters not driven in a UI test"
+      ]
+    },
+    {
+      "id": "FG-079",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P2",
+      "role": "user",
+      "goal": "preview a video while it is still downloading",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Only contiguous written bytes served",
+        "Clear message when preview is not possible",
+        "Download unaffected"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: preview played at 4.3 of 19 MB, download completed intact"
+      ]
+    },
+    {
+      "id": "FG-080",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "adjust the picture",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Aspect ratio, crop, zoom, rotation",
+        "Brightness, contrast, saturation",
+        "Hardware decoding toggle"
+      ],
+      "status": "done",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "check: brightness/aspect/zoom applied",
+        "unverified: rotation and crop visually"
+      ]
+    },
+    {
+      "id": "FG-081",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P0",
+      "role": "user",
+      "goal": "keep downloading while watching",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Playback during active downloads",
+        "1080p/4K without dropped frames under load"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: playback continues while a download runs; 1080p60 and 4K 0 dropped frames"
+      ]
+    },
+    {
+      "id": "FG-082",
+      "milestone": "M7",
+      "points": 5,
+      "priority": "P1",
+      "role": "user",
+      "goal": "generate subtitles offline with speech recognition",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Runs on this computer, no upload",
+        "Model downloaded once and verified",
+        "SRT written and loaded into the player",
+        "Language choice and translate to English"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "check: Base model, 31/33 reference words, SRT loaded into the player"
+      ]
+    },
+    {
+      "id": "FG-083",
+      "milestone": "M7",
+      "points": 2,
+      "priority": "P1",
+      "role": "user",
+      "goal": "handle broken or missing media gracefully",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Damaged, fake and missing files show a clear message",
+        "Player releases file handles on close"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)",
+        "checks: damaged MP4, random bytes, missing file, file handle released"
+      ]
+    },
+    {
+      "id": "FG-084",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P0",
+      "role": "user",
+      "goal": "get the player through the installer and updater",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Clean portable layout plays",
+        "In-app update from 0.3.3 to 0.4.0",
+        "Player works after update"
+      ],
+      "status": "verified",
+      "evidence": [
+        "manual 2026-11-14: installed 0.3.3 updated in-app to 0.4.0, libvlc and whisper present, data kept; self-test on the updated install 46/46 on rerun (a first run ended 45/46 after the window was navigated to Scheduler by mouse during the test)",
+        "self-test 2026-11-14, installed 0.4.0 build: 46/46 checks (bench/player-results.md)"
+      ]
+    },
+    {
+      "id": "FG-085",
+      "milestone": "M7",
+      "points": 2,
+      "priority": "P1",
+      "role": "user",
+      "goal": "open FluxGet without staring at an empty window",
+      "value": "Download and watch in one app",
+      "deps": [],
+      "criteria": [
+        "Branded splash immediately",
+        "UI ready measured"
+      ],
+      "status": "verified",
+      "evidence": [
+        "probe: window 0.41–0.52 s, UI ready 1.22–1.29 s over 3 runs"
       ]
     }
   ]
