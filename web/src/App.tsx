@@ -3,6 +3,7 @@ import { CalendarClock, CheckCheck, Clapperboard, Download, LayoutGrid, Magnet, 
 import { onCompleted, useStore } from './store'
 import { navigate, useRoute, type Page } from './router'
 import { speed } from './format'
+import { desktop } from './api'
 import { Button, cx, Sparkline } from './ui'
 import { Logo } from './components/Logo'
 import { AddDialog, extractUrls } from './components/AddDialog'
@@ -68,6 +69,15 @@ export function App() {
     toast(`Finished ${j.fileName ?? 'download'}`, 'ok')
   }), [])
 
+  useEffect(() => {
+    const wv = (window as any).chrome?.webview
+    if (!wv) return
+    desktop.send({ type: 'theme', dark: document.documentElement.classList.contains('dark') })
+    const handler = (e: MessageEvent) => { if (e.data?.type === 'add' && typeof e.data.url === 'string') openAdd(e.data.url) }
+    wv.addEventListener('message', handler)
+    return () => wv.removeEventListener('message', handler)
+  }, [openAdd])
+
   const down = history[history.length - 1]?.down ?? 0
   const up = history[history.length - 1]?.up ?? 0
   const title = NAV.find(n => n.page === page)!.label
@@ -94,7 +104,7 @@ export function App() {
             <span className="text-[11.5px] text-muted">Total speed</span>
             {settings && settings.globalSpeedLimit > 0 && <span className="text-[11px] text-warn">limited</span>}
           </div>
-          <div className="num mt-0.5 text-[17px] font-semibold">{down > 0 ? speed(down) : 'Idle'}</div>
+          <div className={cx('mt-0.5 text-[17px] font-semibold', down > 0 ? 'num' : 'text-faint')}>{down > 0 ? speed(down) : 'Idle'}</div>
           {up > 0 && <div className="num text-[11.5px] text-muted">↑ {speed(up)}</div>}
           <Sparkline values={history.map(h => h.down)} height={30} className="mt-2" />
         </div>

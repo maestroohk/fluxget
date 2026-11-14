@@ -91,6 +91,8 @@ export function SegmentMap({ segments, total }: { segments: Segment[]; total: nu
 export function Sparkline({ values, height = 44, className, stroke = 'var(--accent)' }: { values: number[]; height?: number; className?: string; stroke?: string }) {
   const w = 300
   const max = Math.max(1, ...values)
+  const idle = values.every(v => v <= 0)
+  if (idle) stroke = 'var(--line-strong)'
   const pts = values.map((v, i) => [(i / Math.max(1, values.length - 1)) * w, height - 2 - (v / max) * (height - 6)])
   const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
   return (
@@ -108,7 +110,7 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
     const prev = document.activeElement as HTMLElement | null
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', key)
-    setTimeout(() => ref.current?.querySelector<HTMLElement>('[autofocus],input,textarea,button')?.focus(), 10)
+    setTimeout(() => (ref.current?.querySelector<HTMLElement>('textarea,input:not([type=hidden]),select') ?? ref.current?.querySelector<HTMLElement>('button'))?.focus(), 10)
     return () => { window.removeEventListener('keydown', key); prev?.focus() }
   }, [open, onClose])
   if (!open) return null

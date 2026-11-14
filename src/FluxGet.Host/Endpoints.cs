@@ -129,6 +129,12 @@ public static class Endpoints
             return Results.NoContent();
         });
 
+        api.MapPost("/app/activate", (ActivateBody body, AppSignals signals) =>
+        {
+            signals.Activate(body.Argument);
+            return Results.NoContent();
+        });
+
         api.MapGet("/settings", (JobManager m) => m.Settings);
         api.MapPut("/settings", (EngineSettings s, JobManager m, FluxGetHostOptions o) =>
         {

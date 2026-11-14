@@ -36,8 +36,8 @@ export function Overview({ openAdd }: { openAdd: (t?: string) => void }) {
           <div className="grid gap-px bg-line md:grid-cols-[1.4fr_1fr_1fr_1fr]">
             <div className="bg-surface p-5">
               <div className="text-[12px] text-muted">Downloading now</div>
-              <div className="num mt-1 text-[34px] leading-none font-semibold tracking-tight">{down > 0 ? speed(down) : <span className="text-faint">Idle</span>}</div>
-              <div className="num mt-1.5 text-[12px] text-muted">peak {speed(peak)} in the last 90 s</div>
+              <div className="num mt-1 text-[34px] leading-none font-semibold tracking-tight">{down > 0 ? speed(down) : <span className="font-sans text-faint">Idle</span>}</div>
+              <div className="num mt-1.5 text-[12px] text-muted">{peak > 0 ? `peak ${speed(peak)} in the last 90 s` : 'No transfers in the last 90 s'}</div>
               <Sparkline values={history.map(h => h.down)} height={48} className="mt-3" />
             </div>
             <Metric label="Active" value={String(active.length)} sub={`${queued.length} waiting`} />
