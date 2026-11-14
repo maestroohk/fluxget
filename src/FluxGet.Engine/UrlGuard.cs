@@ -34,25 +34,6 @@ public static class UrlGuard
         }
         return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6Multicast || (b[0] & 0xFE) == 0xFC;
     }
-
-    public static async ValueTask<Stream> ConnectPublicOnly(SocketsHttpConnectionContext context, CancellationToken ct)
-    {
-        var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, ct);
-        var allowed = addresses.Where(a => !IsPrivate(a)).ToArray();
-        if (allowed.Length == 0 || allowed.Length != addresses.Length)
-            throw new BlockedAddressException($"Blocked: {context.DnsEndPoint.Host} resolves to a private or reserved address.");
-        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-        try
-        {
-            await socket.ConnectAsync(allowed, context.DnsEndPoint.Port, ct);
-            return new NetworkStream(socket, ownsSocket: true);
-        }
-        catch
-        {
-            socket.Dispose();
-            throw;
-        }
-    }
 }
 
 public sealed class BlockedAddressException(string message) : IOException(message);

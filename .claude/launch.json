@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fluxget-host",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/FluxGet.Host", "--", "--FluxGet:DevDashboard=true"],
+      "port": 17890
+    }
+  ]
+}

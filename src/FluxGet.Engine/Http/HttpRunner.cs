@@ -12,6 +12,7 @@ public sealed class HttpRunner : IJobRunner, IDisposable
     private const int BufferSize = 128 * 1024;
     private static readonly HashSet<string> ForwardedHeaders = new(StringComparer.OrdinalIgnoreCase) { "Cookie", "Referer", "User-Agent", "Accept-Language" };
     private readonly HttpClient _client;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _hostLimits = new(StringComparer.OrdinalIgnoreCase);
 
     public HttpRunner(EngineOptions options)
     {
@@ -26,7 +27,7 @@ public sealed class HttpRunner : IJobRunner, IDisposable
             MaxConnectionsPerServer = 64,
             UseCookies = false
         };
-        if (options.BlockPrivateNetworks) handler.ConnectCallback = UrlGuard.ConnectPublicOnly;
+        handler.ConnectCallback = Connector.Create(options.BlockPrivateNetworks);
         _client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan, DefaultRequestVersion = HttpVersion.Version11, DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact };
         _client.DefaultRequestHeaders.UserAgent.ParseAdd("FluxGet/0.1");
     }
@@ -119,6 +120,15 @@ public sealed class HttpRunner : IJobRunner, IDisposable
         var isNew = !File.Exists(part);
         await using var fs = OpenPart(part, job.TotalBytes, isNew);
         var run = new RunState(ctx, fs, probe);
+        lock (job.Gate)
+        {
+            foreach (var seg in job.Segments)
+            {
+                seg.Next = seg.Start + Interlocked.Read(ref seg.Received);
+                seg.Active = false;
+            }
+            Interlocked.Exchange(ref job.ReceivedBytes, job.Segments.Sum(x => Interlocked.Read(ref x.Received)));
+        }
 
         using var checkpointCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var checkpoints = CheckpointLoop(run, checkpointCts.Token);
@@ -178,12 +188,17 @@ public sealed class HttpRunner : IJobRunner, IDisposable
         public FileStream File { get; } = file;
         public Uri Uri { get; } = probe.FinalUri;
         public HttpResponseMessage? InitialResponse = probe.Response;
+        public int Limit;
+        public int Busy;
     }
 
     private async Task RunWorkers(RunState run, CancellationToken ct)
     {
         var job = run.Job;
         var workers = job.Resumable ? Connections(run.Ctx) : 1;
+        if (_hostLimits.TryGetValue(run.Uri.Host, out var learned)) workers = Math.Min(workers, learned);
+        run.Limit = workers;
+        run.Busy = 0;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
         Exception? failure = null;
         var tasks = Enumerable.Range(0, workers).Select(_ => Task.Run(async () =>
@@ -192,8 +207,20 @@ public sealed class HttpRunner : IJobRunner, IDisposable
             {
                 while (!linked.IsCancellationRequested && TakeSegment(run) is { } seg)
                 {
-                    try { await DownloadSegment(run, seg, linked.Token); }
-                    finally { lock (job.Gate) { seg.Active = false; job.ActiveConnections = job.Segments.Count(s => s.Active); } }
+                    var released = false;
+                    try { released = await DownloadSegment(run, seg, linked.Token); }
+                    finally
+                    {
+                        lock (job.Gate)
+                        {
+                            if (!released)
+                            {
+                                seg.Active = false;
+                                run.Busy--;
+                            }
+                            job.ActiveConnections = job.Segments.Count(s => s.Active);
+                        }
+                    }
                 }
             }
             catch (Exception e)
@@ -214,6 +241,7 @@ public sealed class HttpRunner : IJobRunner, IDisposable
         var min = run.Ctx.Options.MinSplitSize;
         lock (job.Gate)
         {
+            if (run.Busy >= run.Limit) return null;
             var free = job.Segments.FirstOrDefault(s => !s.Active && !s.IsComplete);
             if (free is null && job.Resumable && job.TotalBytes is not null)
             {
@@ -228,12 +256,13 @@ public sealed class HttpRunner : IJobRunner, IDisposable
             }
             if (free is null) return null;
             free.Active = true;
+            run.Busy++;
             job.ActiveConnections = job.Segments.Count(s => s.Active);
             return free;
         }
     }
 
-    private async Task DownloadSegment(RunState run, Segment seg, CancellationToken ct)
+    private async Task<bool> DownloadSegment(RunState run, Segment seg, CancellationToken ct)
     {
         var job = run.Job;
         var ctx = run.Ctx;
@@ -244,9 +273,10 @@ public sealed class HttpRunner : IJobRunner, IDisposable
             while (true)
             {
                 long from;
+                var gotBytes = false;
                 lock (job.Gate)
                 {
-                    if (seg.End >= 0 && seg.Next > seg.End) return;
+                    if (seg.End >= 0 && seg.Next > seg.End) return false;
                     from = seg.Next;
                 }
                 try
@@ -278,6 +308,7 @@ public sealed class HttpRunner : IJobRunner, IDisposable
                             await Write(run.File.SafeFileHandle, buffer.AsMemory(0, take), pos, ct);
                             Interlocked.Add(ref seg.Received, take);
                             Interlocked.Add(ref job.ReceivedBytes, take);
+                            gotBytes = true;
                             if (attempt > 0)
                             {
                                 attempt = 0;
@@ -293,10 +324,10 @@ public sealed class HttpRunner : IJobRunner, IDisposable
                             seg.End = seg.Next - 1;
                             job.TotalBytes = seg.Next;
                         }
-                        return;
+                        return false;
                     }
                     if (seg.Next <= seg.End) throw new IOException("The connection closed before the segment finished.");
-                    return;
+                    return false;
                 }
                 catch (Exception e) when (IsTransient(e, ct))
                 {
@@ -304,6 +335,26 @@ public sealed class HttpRunner : IJobRunner, IDisposable
                     {
                         await WaitForNetwork(ctx, ct);
                         continue;
+                    }
+                    if (!gotBytes && IsThrottle(e))
+                    {
+                        int? reduced = null;
+                        lock (job.Gate)
+                        {
+                            if (run.Busy > 1)
+                            {
+                                run.Busy--;
+                                seg.Active = false;
+                                run.Limit = Math.Max(1, run.Busy);
+                                reduced = run.Limit;
+                            }
+                        }
+                        if (reduced is { } n)
+                        {
+                            _hostLimits[run.Uri.Host] = n;
+                            ctx.SetStatus(JobStatus.Running, $"Server limits connections — using {n}");
+                            return true;
+                        }
                     }
                     attempt++;
                     if (attempt > ctx.Options.MaxAttempts)
@@ -488,6 +539,15 @@ public sealed class HttpRunner : IJobRunner, IDisposable
             _ => false
         };
     }
+
+    private static bool IsThrottle(Exception e) => e switch
+    {
+        HttpRequestException { StatusCode: HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable } => true,
+        HttpRequestException { StatusCode: null } => true,
+        OperationCanceledException => true,
+        IOException => true,
+        _ => false
+    };
 
     private static Exception Unwrap(Exception e) => e is OperationCanceledException ? new TimeoutException() : e;
 

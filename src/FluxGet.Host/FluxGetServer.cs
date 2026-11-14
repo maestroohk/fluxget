@@ -80,6 +80,8 @@ public static class FluxGetServer
             var docFiles = new PhysicalFileProvider(docs);
             app.UseDefaultFiles(new DefaultFilesOptions { RequestPath = "/dev", FileProvider = docFiles, DefaultFileNames = ["dashboard.html"] });
             app.UseStaticFiles(new StaticFileOptions { RequestPath = "/dev", FileProvider = docFiles, ContentTypeProvider = types, ServeUnknownFileTypes = false });
+            app.MapGet("/dev", () => Results.Redirect("/dev/dashboard.html"));
+            app.MapGet("/dev/", () => Results.Redirect("/dev/dashboard.html"));
         }
 
         app.MapCore();

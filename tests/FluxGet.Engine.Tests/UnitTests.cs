@@ -105,3 +105,24 @@ public sealed class UnitTests
         Assert.InRange(sw.Elapsed.TotalSeconds, 2.5, 3.6);
     }
 }
+
+public sealed class ConnectorTests
+{
+    [Fact]
+    public async Task Private_targets_are_blocked_in_hosted_mode()
+    {
+        await Assert.ThrowsAsync<FluxGet.Engine.BlockedAddressException>(async () => await FluxGet.Engine.Http.Connector.ConnectAsync("127.0.0.1", 80, true, CancellationToken.None));
+        await Assert.ThrowsAsync<FluxGet.Engine.BlockedAddressException>(async () => await FluxGet.Engine.Http.Connector.ConnectAsync("localhost", 80, true, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Connects_to_loopback_listener()
+    {
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        await using var stream = await FluxGet.Engine.Http.Connector.ConnectAsync("localhost", port, false, CancellationToken.None);
+        Assert.True(stream.CanWrite);
+        listener.Stop();
+    }
+}

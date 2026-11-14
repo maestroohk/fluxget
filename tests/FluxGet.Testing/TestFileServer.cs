@@ -25,6 +25,8 @@ public sealed class ServedFile
     public long BytesPerSecond { get; set; }
     public bool NoLength { get; set; }
     public string? Disposition { get; set; }
+    public int ConcurrencyLimit { get; set; }
+    public int Throttled;
 
     public int Requests;
     public int RangedRequests;
@@ -96,6 +98,13 @@ public sealed class TestFileServer : IAsyncDisposable
         while ((m = f.MaxConcurrent) < c && Interlocked.CompareExchange(ref f.MaxConcurrent, c, m) != m) { }
         try
         {
+            if (f.ConcurrencyLimit > 0 && c > f.ConcurrencyLimit)
+            {
+                Interlocked.Increment(ref f.Throttled);
+                ctx.Response.Headers.RetryAfter = "1";
+                ctx.Response.StatusCode = 429;
+                return;
+            }
             if (f.ForceStatus is { } st)
             {
                 ctx.Response.StatusCode = st;

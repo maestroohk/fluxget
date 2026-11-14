@@ -173,6 +173,16 @@ public sealed class HttpDownloadTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Connection_count_adapts_when_server_limits_concurrency()
+    {
+        var f = new ServedFile { Size = 12L * 1024 * 1024, ConcurrencyLimit = 3, BytesPerSecond = 8L * 1024 * 1024 };
+        var job = Add("limited-conn.bin", f, r => r with { Connections = 8 });
+        job = await _h.WaitForStatus(job.Id, JobStatus.Completed, 30000);
+        Assert.True(f.Throttled > 0);
+        Assert.Equal(TestFileServer.Sha256(f), EngineHarness.Sha256(job.FilePath!));
+    }
+
+    [Fact]
     public async Task Persistent_server_errors_fail_after_bounded_attempts()
     {
         var f = new ServedFile { Size = 1000, ForceStatus = 503 };
