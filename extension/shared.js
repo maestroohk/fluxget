@@ -4,6 +4,7 @@ export const DEFAULTS = {
   captureDownloads: false,
   captureMinMb: 5,
   videoButton: false,
+  siteButton: true,
   detectMedia: false,
   sendCookies: false,
 }

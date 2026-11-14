@@ -53,6 +53,7 @@ public static class MediaEndpoints
                 return Results.Problem("Unsupported audio quality.", statusCode: 400);
             var headers = Endpoints.ToHeaders(body.Headers);
             var added = new List<JobDto>();
+            var ids = new List<long>();
             var skipped = 0;
             foreach (var item in body.Items.Take(5000))
             {
@@ -79,11 +80,16 @@ public static class MediaEndpoints
                         Headers = headers
                     });
                     added.Add(JobDto.From(job, m.Settings));
+                    ids.Add(job.Id);
                 }
-                catch (DuplicateJobException) { skipped++; }
+                catch (DuplicateJobException d)
+                {
+                    skipped++;
+                    ids.Add(d.Existing.Id);
+                }
                 catch (ArgumentException) { skipped++; }
             }
-            return Results.Ok(new { added = added.Count, skipped });
+            return Results.Ok(new { added = added.Count, skipped, ids });
         });
 
         api.MapPost("/convert", (ConvertBody body, JobManager m) =>

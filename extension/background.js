@@ -1,4 +1,4 @@
-import { call, isHttp, isMediaPage, openMediaInApp, sendDownload, settings } from './shared.js'
+import { call, cookieHeader, isHttp, isMediaPage, openMediaInApp, sendDownload, settings } from './shared.js'
 
 const MENU = { link: 'fg-link', media: 'fg-media', page: 'fg-page' }
 
@@ -68,6 +68,36 @@ chrome.downloads.onCreated.addListener(async item => {
 })
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  const handlers = {
+    'fg-status': async () => {
+      try { await call('GET', '/api/health') } catch { return { state: 'offline' } }
+      const s = await settings()
+      if (!s.token) return { state: 'unpaired' }
+      try { await call('GET', '/api/session'); await call('GET', '/api/settings'); return { state: 'ready' } } catch { return { state: 'unpaired' } }
+    },
+    'fg-launch': async () => { await chrome.tabs.create({ url: 'fluxget://open' }); return { ok: true } },
+    'fg-analyze': async () => ({ ok: true, info: await call('POST', '/api/media/analyze', { url: msg.url }) }),
+    'fg-media-download': async () => {
+      const cookie = await cookieHeader(msg.item.url)
+      const r = await call('POST', '/api/media/download', {
+        items: [msg.item], mode: msg.opts.mode, height: msg.opts.height ?? null, container: msg.opts.container ?? 'mp4',
+        audioFormat: msg.opts.audioFormat ?? 'mp3', audioQuality: msg.opts.audioQuality ?? null, subtitles: false,
+        headers: { cookie, referer: sender.tab?.url ?? null, userAgent: navigator.userAgent },
+      })
+      const jobId = r.ids?.[0]
+      if (!jobId) throw new Error('FluxGet did not accept this download.')
+      return { ok: true, jobId }
+    },
+    'fg-job': async () => ({ ok: true, job: await call('GET', `/api/jobs/${msg.id}`) }),
+    'fg-reveal': async () => { await call('POST', `/api/jobs/${msg.id}/open?reveal=true`); return { ok: true } },
+    'fg-open-file': async () => { await call('POST', `/api/jobs/${msg.id}/open`); return { ok: true } },
+    'fg-open-app': async () => { await call('POST', '/api/app/activate', { argument: null }); return { ok: true } },
+    'fg-open-media': async () => { await openMediaInApp(msg.url); return { ok: true } },
+  }
+  if (handlers[msg?.type]) {
+    handlers[msg.type]().then(reply, e => reply({ ok: false, error: e.message }))
+    return true
+  }
   if (msg?.type === 'video-button') {
     const page = sender.tab?.url
     const target = isMediaPage(page) ? page : isHttp(msg.src) ? msg.src : null

@@ -16,7 +16,7 @@ public sealed class FluxGetHostOptions
     public string? DownloadDirectory { get; set; }
 
     public string ResolveDataDirectory() => Path.GetFullPath(DataDirectory ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FluxGet"));
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FluxGetData"));
 
     public bool IsLoopbackOnly => Mode != HostMode.Hosted;
 }

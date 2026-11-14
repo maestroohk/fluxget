@@ -39,14 +39,28 @@ For UI work, run `npm run dev` in `web/` (Vite on port 5173, proxied to the host
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1 -Version 0.1.0
 ```
 
-Produces a per-user Velopack installer (`artifacts/releases/FluxGet-win-Setup.exe`) with a self-contained .NET runtime and the bundled tools. Builds are not code-signed yet, so Windows SmartScreen will warn on first run.
+Produces a per-user Velopack installer (`artifacts/releases/FluxGet-win-Setup.exe`, about 200 MB), a portable zip, the update feed and `FluxGet-extension-<version>.zip`. It installs to `%LOCALAPPDATA%\FluxGet` with Start menu and desktop shortcuts; downloads, settings and the database live separately in `%LOCALAPPDATA%\FluxGetData`, so uninstalling or updating never deletes them.
+
+### Code signing
+
+`package.ps1` signs FluxGet's own executables and DLLs plus `Setup.exe` with SHA-256 and an RFC 3161 timestamp. Bundled third-party tools (yt-dlp, FFmpeg, Deno) are left exactly as their publishers ship them.
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/package.ps1 -SignPfx C:\path	o\certificate.pfx
+```
+
+The password comes from `-SignPassword`, `FLUXGET_SIGN_PASSWORD`, or a `.pass` file next to the PFX. For Azure Trusted Signing set `FLUXGET_AZURE_SIGN_FILE` (Velopack's metadata JSON) instead; that mode signs every binary.
+
+Windows only stops showing SmartScreen warnings for a certificate issued by a trusted certificate authority: an OV/EV code-signing certificate, or Azure Trusted Signing (Microsoft's managed service). `scripts/new-dev-cert.ps1` creates a self-signed test certificate (as a PFX file only, never added to a Windows trust store) to exercise the pipeline. Installers signed with it show the signer as untrusted.
 
 ## Browser extension
 
 1. Open `chrome://extensions` (or `edge://extensions`), enable Developer mode, choose **Load unpacked** and select the `extension/` folder.
 2. Click the FluxGet toolbar icon → **Connect**. FluxGet shows a 6-digit code; type it into the extension.
 
-Out of the box the extension only gets the context menu, the toolbar popup and (optional) download capture. Detecting media files on pages, the on-video download button and passing site cookies each ask for extra permission when you turn them on. Cookies are sent only for the URL being downloaded and are kept in memory, never written to disk or logs.
+On YouTube and other supported video sites, hover over a video: a small **Download** button appears on the player. Click it to see the real qualities with sizes (4K, 1440p, 1080p, 720p…) and audio options (MP3 192/320 kbps, M4A). Pick one and the download starts in FluxGet, with live progress in the panel and **Show in folder** / **Open** when it finishes. The button can be turned off in the extension settings, and it is never shown on DRM-protected players.
+
+Besides the video sites, the extension only gets the context menu, the toolbar popup and (optional) download capture. Detecting media files on pages, the on-video download button and passing site cookies each ask for extra permission when you turn them on. Cookies are sent only for the URL being downloaded and are kept in memory, never written to disk or logs.
 
 ## Remote worker (Docker)
 

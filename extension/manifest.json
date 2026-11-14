@@ -1,18 +1,67 @@
 {
   "manifest_version": 3,
   "name": "FluxGet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Send downloads, videos and links to the FluxGet download manager on this computer.",
   "minimum_chrome_version": "120",
-  "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png" }
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
   },
-  "background": { "service_worker": "background.js", "type": "module" },
-  "permissions": ["contextMenus", "storage", "downloads", "activeTab", "scripting"],
-  "optional_permissions": ["cookies", "webRequest"],
-  "host_permissions": ["http://127.0.0.1/*"],
-  "optional_host_permissions": ["<all_urls>"],
-  "web_accessible_resources": []
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "downloads",
+    "activeTab",
+    "scripting"
+  ],
+  "optional_permissions": [
+    "cookies",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://youtu.be/*",
+        "*://*.facebook.com/*",
+        "*://*.instagram.com/*",
+        "*://*.tiktok.com/*",
+        "*://x.com/*",
+        "*://*.x.com/*",
+        "*://*.twitter.com/*",
+        "*://*.reddit.com/*",
+        "*://vimeo.com/*",
+        "*://*.vimeo.com/*",
+        "*://*.twitch.tv/*",
+        "*://*.dailymotion.com/*",
+        "*://soundcloud.com/*",
+        "*://*.bilibili.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }

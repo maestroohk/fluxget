@@ -22,6 +22,7 @@ async function init() {
   $('opt-cookies').checked = s.sendCookies
   $('opt-detect').checked = s.detectMedia
   $('opt-button').checked = s.videoButton
+  $('opt-site').checked = s.siteButton !== false
   try {
     await call('GET', '/api/health')
   } catch {
@@ -206,6 +207,7 @@ $('disconnect').addEventListener('click', async () => {
   show('pair-form', false)
 })
 
+$('opt-site').addEventListener('change', e => save({ siteButton: e.target.checked }))
 $('opt-capture').addEventListener('change', e => save({ captureDownloads: e.target.checked }))
 $('opt-min').addEventListener('change', e => save({ captureMinMb: Math.max(0, Number(e.target.value) || 0) }))
 $('opt-cookies').addEventListener('change', async e => {

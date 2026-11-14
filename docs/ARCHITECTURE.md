@@ -169,7 +169,7 @@ flowchart LR
   add[Magnet link / .torrent] --> jm[JobManager] --> tr[TorrentRunner]
   tr --> ce[MonoTorrent ClientEngine<br/>one per process]
   ce --> dht[DHT / trackers / peers]
-  ce --> fr[(fast-resume + metadata cache<br/>%LOCALAPPDATA%/FluxGet/torrents)]
+  ce --> fr[(fast-resume + metadata cache<br/>%LOCALAPPDATA%/FluxGetData/torrents)]
   tr -- progress, peers, rates --> jm
   ui[Torrents screen] -- file priorities --> tr
 ```
@@ -182,7 +182,7 @@ The engine-wide bandwidth limits are mapped onto MonoTorrent's own download/uplo
 flowchart TB
   subgraph Personal[Personal install - default]
     d[FluxGet.Desktop.exe<br/>Velopack installer, per-user] --> h1[Host in-process<br/>127.0.0.1 only]
-    h1 --> s1[(SQLite in %LOCALAPPDATA%)]
+    h1 --> s1[(SQLite in %LOCALAPPDATA%/FluxGetData)]
     d --> t1[bundled yt-dlp, FFmpeg, Deno]
   end
   subgraph Remote[Remote worker - optional]

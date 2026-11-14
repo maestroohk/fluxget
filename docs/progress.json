@@ -41,11 +41,6 @@
       "severity": "high"
     },
     {
-      "id": "R2",
-      "text": "Installer is unsigned until a code-signing certificate is obtained (SmartScreen warnings).",
-      "severity": "medium"
-    },
-    {
       "id": "R3",
       "text": "MonoTorrent stable releases are infrequent (3.0.2); pinned and integration-tested.",
       "severity": "medium"
@@ -74,6 +69,11 @@
       "id": "R9",
       "text": "MonoTorrent 3.0.2 has no sparse-file option: deselected files sharing a piece are created at full length until the torrent finishes.",
       "severity": "low"
+    },
+    {
+      "id": "R2",
+      "text": "Signing pipeline works, but only a self-signed test certificate exists. A CA-issued OV/EV certificate or Azure Trusted Signing account is needed before public release to avoid SmartScreen warnings.",
+      "severity": "medium"
     }
   ],
   "stories": [
@@ -619,11 +619,9 @@
         "Audio-only option",
         "Job appears in desktop app"
       ],
-      "status": "done",
+      "status": "verified",
       "evidence": [
-        "e2e: extension token can call /api/media/analyze",
-        "code: popup quality list + audio-only",
-        "unverified: popup media flow on a live video tab"
+        "manual 2026-11-14 (installed app + extension in Edge): YouTube player Download button -> panel listing real formats 4K 1.3 GB ... 360p, MP3/M4A -> chose 720p -> live progress -> Download complete; file is H.264 1280x720 60 fps + AAC"
       ]
     },
     {
@@ -663,8 +661,8 @@
       ],
       "status": "done",
       "evidence": [
-        "code: optional on-video button, skips videos <240x135 and EME (DRM) players",
-        "unverified"
+        "manual 2026-11-14: in-page button + quality panel on YouTube (Shadow DOM, Escape/outside click to close, skips EME/DRM players)",
+        "unverified: other video sites"
       ]
     },
     {
@@ -893,11 +891,11 @@
         "yt-dlp/FFmpeg/Deno bundled with licences",
         "Update check via release feed"
       ],
-      "status": "done",
+      "status": "verified",
       "evidence": [
-        "manual 2026-11-14: scripts/package.ps1 produced FluxGet-win-Setup.exe (200 MB), portable zip and update feed; portable build ran self-contained from a clean folder",
-        "tools checksum-verified: yt-dlp 2026.10.26, Deno 2.9.8, FFmpeg 9.0 LGPL shared",
-        "unverified: Setup.exe install/uninstall and update apply; installer is unsigned"
+        "manual 2026-11-14: signed FluxGet-win-Setup.exe 0.2.0 installed per-user to %LOCALAPPDATA%\\FluxGet with Start menu and desktop shortcuts; app ran with bundled tools and downloaded a YouTube video",
+        "signing: FluxGet binaries + Setup.exe signed SHA-256 with DigiCert timestamp; bundled third-party tools left untouched",
+        "limitation: test certificate is self-signed; a CA-issued certificate or Azure Trusted Signing is required to remove SmartScreen warnings"
       ]
     },
     {

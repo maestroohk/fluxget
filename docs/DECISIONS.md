@@ -50,3 +50,12 @@ Playwright's bundled Chromium fails to start on the development machine (Windows
 
 ## D-015 Media output names carry the real quality (2026-11-14)
 A downloaded 360p test video was named "...4K..." because the 4K is part of the YouTube title. File names now include the downloaded height (`[720p]`) or audio bitrate (`[192k]`), taken from the actual stream, so different quality choices never overwrite each other and the name cannot mislead.
+
+## D-016 User data lives outside the install folder (2026-11-14)
+Velopack installs to `%LOCALAPPDATA%\FluxGet` and replaces that folder on uninstall. FluxGet's database, session key and WebView2 profile now live in `%LOCALAPPDATA%\FluxGetData` so updates and uninstalls never remove download history.
+
+## D-017 Sign only our own binaries (2026-11-14)
+Velopack signs every binary by default, which would put FluxGet's signature on yt-dlp and FFmpeg. A signing template (`scripts/sign-file.ps1`) skips the bundled `tools` folder so third-party executables keep their publishers' signatures (or none).
+
+## D-018 In-page download panel instead of a separate window (2026-11-14)
+Like IDM, the extension adds a Download button on supported video players. Its quality panel renders inside a closed Shadow DOM, so site styles cannot break it, and talks to FluxGet only through the extension's background worker, so web pages never see the API token.
