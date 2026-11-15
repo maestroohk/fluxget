@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FluxGet",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Detects video and audio in the browser and sends downloads, streams and links to the FluxGet app on this computer.",
   "minimum_chrome_version": "121",
   "icons": {
