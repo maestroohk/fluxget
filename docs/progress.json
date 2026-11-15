@@ -1399,20 +1399,22 @@
       "points": 5,
       "priority": "P0",
       "role": "user",
-      "goal": "see subtitles generated live while a video or stream plays",
+      "goal": "see subtitles generated while a video or stream plays, and get the whole file finished and saved",
       "value": "Watch and download the way IDM users expect",
       "deps": [],
       "criteria": [
         "Switch on from the CC menu or with C",
         "Lines appear within seconds and follow seeks",
         "Runs on this computer only",
-        "Saved next to local files when complete"
+        "Saved next to local files when complete",
+        "Whole local file finished in the background with a speed setting"
       ],
       "status": "verified",
       "evidence": [
         "self-test 2026-11-15 (55/55 incl. stream checks), bench/player-results.md",
         "first line after 2700 ms, follows a seek to 0:09, turns off cleanly",
-        "test: LiveCaptionsTests (needs a downloaded model)"
+        "test: LiveCaptionsTests (needs a downloaded model)",
+        "self-test 2026-11-15: first line 2.3 s; benchmark in DECISIONS D-027"
       ]
     },
     {
@@ -1454,6 +1456,69 @@
       "evidence": [
         "test: Media_jobs_show_the_real_output_file_name",
         "manual 2026-11-15: download details show Saving as emacs-29.4.tar.xz in the download folder"
+      ]
+    },
+    {
+      "id": "FG-092",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "open and switch media without the window freezing or flickering",
+      "value": "Feels finished and dependable",
+      "deps": [],
+      "criteria": [
+        "Opening never blocks the window",
+        "Dialogs and menus over the video do not flicker",
+        "No green frames after mode switches on HEVC"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-15: HEVC 10-bit no green frames after seeks/fullscreen/mini; menu over still frame; dialog keeps video window steady for 3 s"
+      ]
+    },
+    {
+      "id": "FG-093",
+      "milestone": "M7",
+      "points": 2,
+      "priority": "P1",
+      "role": "user",
+      "goal": "use common player extras",
+      "value": "Feels finished and dependable",
+      "deps": [],
+      "criteria": [
+        "Time remaining",
+        "Back/forward 10 s",
+        "Repeat and shuffle",
+        "Chapters",
+        "Sleep timer",
+        "Save frame as picture"
+      ],
+      "status": "done",
+      "evidence": [
+        "code: PlayerControls More menu and controller commands",
+        "unverified: not driven by the self-test"
+      ]
+    },
+    {
+      "id": "FG-094",
+      "milestone": "M6",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "choose where FluxGet is installed in an installer that looks like FluxGet",
+      "value": "Feels finished and dependable",
+      "deps": [],
+      "criteria": [
+        "Default per-user folder",
+        "Change… with a folder picker and writability check",
+        "Installing and finished pages",
+        "Updates in place when already installed"
+      ],
+      "status": "verified",
+      "evidence": [
+        "manual 2026-11-15: FluxGetTest package installed through the wizard into a custom folder in 6–10 s, uninstall entry at that folder, clean uninstall",
+        "unverified: native AOT build runs in CI only"
       ]
     }
   ]
