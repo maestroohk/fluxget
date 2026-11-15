@@ -1325,6 +1325,49 @@
       "evidence": [
         "probe: window 0.41–0.52 s, UI ready 1.22–1.29 s over 3 runs"
       ]
+    },
+    {
+      "id": "FG-086",
+      "milestone": "M4",
+      "points": 5,
+      "priority": "P1",
+      "role": "user",
+      "goal": "download photos and carousels from social and gallery sites",
+      "value": "Posts that are not videos are no longer a dead end",
+      "deps": [],
+      "criteria": [
+        "Photo posts and carousels listed with previews",
+        "Pick items; only those are downloaded into a folder named after the post",
+        "Clear message when the site needs sign-in",
+        "Signed-in session from the extension used when allowed"
+      ],
+      "status": "done",
+      "evidence": [
+        "test: GalleryTests (parse, sign-in message, ranges, real gallery-dl download into named folder)",
+        "manual 2026-11-15: Wikipedia article images via gallery-dl, 3 of 4 selected, saved to 'Big Buck Bunny'",
+        "manual 2026-11-15: user's Instagram post returns the sign-in instructions",
+        "unverified: Instagram/X/Reddit download with a signed-in session (needs the user's browser)"
+      ]
+    },
+    {
+      "id": "FG-087",
+      "milestone": "M4",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "download images and files linked from any page",
+      "value": "Grab what a page offers, like a download manager's page grabber",
+      "deps": [],
+      "criteria": [
+        "Images, video, audio, documents and archives on the page listed",
+        "Icons not preselected",
+        "Selected files use the resumable downloader in a page-named folder"
+      ],
+      "status": "verified",
+      "evidence": [
+        "test: Page_scan_finds_images_media_and_linked_files, Page_scan_reads_a_live_page_and_direct_files",
+        "manual 2026-11-15: ftp.gnu.org/gnu/hello listed 26 files + 4 icons (icons unselected); 2 selected archives downloaded and pass gzip -t"
+      ]
     }
   ]
 }

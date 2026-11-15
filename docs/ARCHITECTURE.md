@@ -246,6 +246,22 @@ Partially downloaded files are previewed through `/preview/{id}`, which serves o
 
 Offline subtitles: FFmpeg extracts 16 kHz mono audio, whisper.cpp (Whisper.net) transcribes it on the CPU with half the cores at most, and an SRT is written next to the media (`name.en.srt`). The speech model (Tiny 75 MB, Base 142 MB, Small 466 MB) downloads once from Hugging Face and is verified against its published SHA-256.
 
+## Photos, galleries and page files
+
+```mermaid
+flowchart LR
+  ui[Media screen] -- Find formats --> analyze[/api/media/analyze/]
+  analyze --> y[yt-dlp<br/>videos and audio]
+  y -- no video --> g[gallery-dl<br/>social and gallery sites]
+  g -- unsupported site --> p[PageScanner<br/>img, srcset, video, audio, linked files]
+  g --> gj[Media job: gallery-dl --range into a named folder]
+  p --> hj[HTTP jobs: segmented, resumable, grouped by page]
+  ext[Browser extension] -- cookies of that site, 30 min in memory --> s[SiteSessions]
+  s -.-> y & g & p & gj & hj
+```
+
+Find formats tries yt-dlp first. When it finds no video, gallery-dl is asked; when gallery-dl has no extractor for the site, FluxGet reads the page itself and lists what it links to. "Images on this page" on a video result goes straight to the second step. gallery-dl downloads only the selected item numbers (`--range`) into a folder named after the post; page files become ordinary HTTP downloads with the page as referrer. The extension shares a site's cookies only when "Pass my site cookies" is on and the user sends that page; they live in memory and expire after 30 minutes.
+
 ## Data model (SQLite)
 
 - `jobs` — id, kind (http/media/torrent), url, status, file name, directory, total/received bytes, validators (etag, last_modified), resumable flag, priority, per-job speed limit, checksum, schedule flag, error, options JSON, timestamps. Indexed on (status, priority, created_at).
