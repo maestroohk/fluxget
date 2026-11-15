@@ -11,12 +11,15 @@ internal static class Program
     public static int Port { get; private set; } = 17890;
     public static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
     public static long StartupMs { get; set; } = -1;
+    public static string? UpdatedTo { get; set; }
+    public static string? RestartedTo { get; private set; }
     public static string[]? SelfTest { get; private set; }
 
     [STAThread]
     private static void Main(string[] args)
     {
         VelopackApp.Build()
+            .OnRestarted(v => UpdatedTo = RestartedTo = v.ToString())
             .OnBeforeUninstallFastCallback(_ =>
             {
                 Notifier.Uninstall();

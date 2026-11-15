@@ -42,11 +42,36 @@ internal sealed partial class MainForm
         void Cmd(object o) => p.Handle(JsonDocument.Parse(JsonSerializer.Serialize(o)).RootElement);
 
         var only = Environment.GetEnvironmentVariable("FLUXGET_SELFTEST_ONLY");
+        var restartedTo = Program.RestartedTo;
         try
         {
             PostToUi(new { type = "navigate", page = "player" });
             await Task.Delay(2500);
-            if (only == "hevc") await HevcChecksAsync();
+            if (only == "update")
+            {
+                var target = Environment.GetEnvironmentVariable("FLUXGET_SELFTEST_UPDATE_TO");
+                var marker = Path.Combine(outDir, "apply-started.txt");
+                if (_updates.CurrentVersion == target && File.Exists(marker))
+                {
+                    var took = DateTime.UtcNow - new DateTime(long.Parse(File.ReadAllText(marker)), DateTimeKind.Utc);
+                    metrics["updateSeconds"] = Math.Round(took.TotalSeconds, 1);
+                    Add("Silent update restarted FluxGet on the new version", true, $"now {_updates.CurrentVersion}, {took.TotalSeconds:0.0} s from Restart to update");
+                    Add("Velopack reported the restart after the update", restartedTo == target, $"restarted hook: {restartedTo}");
+                }
+                else
+                {
+                    var (state, version, error) = await _updates.CheckAsync();
+                    Add("Update found and downloaded", state == "ready", $"{state} {version} {error}");
+                    if (state == "ready")
+                    {
+                        File.WriteAllText(marker, DateTime.UtcNow.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        await File.WriteAllTextAsync(Path.Combine(outDir, "results-before.json"), JsonSerializer.Serialize(checks));
+                        await ApplyUpdateAsync(["--player-selftest", samples, outDir]);
+                        return;
+                    }
+                }
+            }
+            else if (only == "hevc") await HevcChecksAsync();
             else
             {
                 if (only != "stream") await CoreChecksAsync();
@@ -114,6 +139,17 @@ internal sealed partial class MainForm
             p.Close();
             await Task.Delay(1200);
             Shot(this, Path.Combine(outDir, "00-empty-player.png"));
+            var dropFile = S("bbb.mp3");
+            var center = JsonDocument.Parse(JsonDocument.Parse(await _web.CoreWebView2.ExecuteScriptAsync("JSON.stringify([innerWidth / 2, innerHeight / 2])")).RootElement.GetString()!).RootElement;
+            foreach (var kind in new[] { "dragEnter", "dragOver", "drop" })
+                await _web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchDragEvent", JsonSerializer.Serialize(new
+                {
+                    type = kind, x = center[0].GetDouble(), y = center[1].GetDouble(),
+                    data = new { items = Array.Empty<object>(), files = new[] { dropFile }, dragOperationsMask = 1 }
+                }));
+            Add("Dropping a media file onto the window plays it", await Until(() => p.Current?.Source == dropFile && mp.State == VLCState.Playing, 10_000), $"now {p.Current?.Source}");
+            p.Close();
+            await Task.Delay(800);
             Open(S("speech-test.mp4"));
             await Playing();
             p.SeekTo(0);

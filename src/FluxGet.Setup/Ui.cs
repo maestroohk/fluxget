@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace FluxGet.Setup;
 
-internal enum Page { Choose, Installing, Done, Failed }
+internal enum Page { Choose, Installing, Done, Failed, Updating }
 
 internal static unsafe class Ui
 {
@@ -11,6 +11,7 @@ internal static unsafe class Ui
 
     public static Page Page = Page.Choose;
     public static volatile string? Error;
+    public static string Version = "";
     private static string? _notice;
     private static nint _hwnd, _icon;
     private static float _scale = 1;
@@ -24,7 +25,7 @@ internal static unsafe class Ui
     {
         var instance = Native.GetModuleHandleW(null);
         fixed (char* cls = "FluxGetSetup")
-        fixed (char* title = "FluxGet Setup")
+        fixed (char* title = Page == Page.Updating ? "FluxGet" : "FluxGet Setup")
         {
             var wc = new Native.WNDCLASSEXW
             {
@@ -54,6 +55,7 @@ internal static unsafe class Ui
         var size = S(44);
         Native.PrivateExtractIconsW(Environment.ProcessPath!, 0, size, size, &large, null, 1, 0);
         _icon = large;
+        if (Page == Page.Updating) Native.SetTimer(_hwnd, 1, 16, 0);
         Native.ShowWindow(_hwnd, 5);
         Native.UpdateWindow(_hwnd);
         Native.MSG msg;
@@ -180,10 +182,10 @@ internal static unsafe class Ui
         var pad = S(28);
         if (_icon != 0) Native.DrawIconEx(mem, pad, S(22), _icon, S(44), S(44), 0, 0, 3);
         Text(mem, "FluxGet", new Rect(pad + S(56), S(22), S(400), S(48)), 18, 600, Ink, 0x24);
-        Text(mem, Page == Page.Done ? "Installed" : Page == Page.Installing ? "Installing" : Program.Updating ? "Update" : "Setup", new Rect(pad + S(56), S(46), S(400), S(68)), 12.5f, 400, Muted, 0x24);
+        Text(mem, Page == Page.Done ? "Installed" : Page == Page.Installing ? "Installing" : Page == Page.Updating || Program.Updating ? "Update" : "Setup", new Rect(pad + S(56), S(46), S(400), S(68)), 12.5f, 400, Muted, 0x24);
 
         var close = new Rect(client.R - S(46), S(14), client.R - S(14), S(46));
-        if (Page != Page.Installing)
+        if (Page is not (Page.Installing or Page.Updating))
         {
             Hits.Add((Close, close));
             if (_hover == Close) Round(mem, close, Line, S(8));
@@ -212,15 +214,15 @@ internal static unsafe class Ui
                 Text(mem, _notice ?? Program.FreeSpaceText(), new Rect(pad, top + S(158), client.R - pad, top + S(196)), 11.5f, 400, _notice is null ? Muted : 0x4FB4F5, 0x10);
                 Buttons(mem, client, pad, Program.Updating ? "Update" : "Install", "Cancel");
                 break;
+            case Page.Updating:
+                Text(mem, Version.Length > 0 ? $"Updating FluxGet to {Version}…" : "Updating FluxGet…", new Rect(pad, top + S(20), client.R - pad, top + S(50)), 17, 600, Ink, 0x24);
+                Text(mem, "FluxGet reopens by itself in a moment. Downloads, settings and your library stay as they are.", new Rect(pad, top + S(54), client.R - pad, top + S(96)), 12.5f, 400, Muted, 0x10);
+                Bar(mem, new Rect(pad, top + S(116), client.R - pad, top + S(120)));
+                break;
             case Page.Installing:
                 Text(mem, Program.Updating ? "Updating FluxGet…" : "Installing FluxGet…", new Rect(pad, top + S(20), client.R - pad, top + S(50)), 17, 600, Ink, 0x24);
                 Text(mem, "This takes about a minute. You can keep using your PC.", new Rect(pad, top + S(54), client.R - pad, top + S(76)), 12.5f, 400, Muted, 0x24);
-                var track = new Rect(pad, top + S(104), client.R - pad, top + S(108));
-                Round(mem, track, Line, S(2));
-                var seg = (track.R - track.L) / 3;
-                var x = track.L + (int)((track.R - track.L + seg) * _phase) - seg;
-                var bar = new Rect(Math.Max(track.L, x), track.T, Math.Min(track.R, x + seg), track.B);
-                if (bar.R > bar.L) Round(mem, bar, Accent, S(2));
+                Bar(mem, new Rect(pad, top + S(104), client.R - pad, top + S(108)));
                 Text(mem, Program.Target, new Rect(pad, top + S(122), client.R - pad, top + S(142)), 11.5f, 400, Muted, 0x24 | 0x8000);
                 break;
             case Page.Done:
@@ -241,6 +243,15 @@ internal static unsafe class Ui
         Native.DeleteObject(bmp);
         Native.DeleteDC(mem);
         Native.EndPaint(hwnd, &ps);
+    }
+
+    private static void Bar(nint dc, Rect track)
+    {
+        Round(dc, track, Line, S(2));
+        var seg = (track.R - track.L) / 3;
+        var x = track.L + (int)((track.R - track.L + seg) * _phase) - seg;
+        var bar = new Rect(Math.Max(track.L, x), track.T, Math.Min(track.R, x + seg), track.B);
+        if (bar.R > bar.L) Round(dc, bar, Accent, S(2));
     }
 
     private static void Buttons(nint dc, Rect client, int pad, string primary, string? secondary)

@@ -83,6 +83,7 @@ export function App() {
       if (e.data?.type === 'update') { setUpdate(e.data); return }
       if (e.data?.type === 'playerState') { setPlayerState(e.data.state); return }
       if (e.data?.type === 'playerFrame') { setPlayerFrame(e.data.url ?? null); return }
+      if (e.data?.type === 'toast' && typeof e.data.text === 'string') { toast(e.data.text, e.data.tone === 'bad' ? 'bad' : 'ok'); return }
       if (e.data?.type === 'navigate' && typeof e.data.page === 'string') { navigate(e.data.page); return }
       if (typeof e.data?.url !== 'string') return
       if (e.data.type === 'add') openAdd(e.data.url)
@@ -91,6 +92,30 @@ export function App() {
     wv.addEventListener('message', handler)
     return () => wv.removeEventListener('message', handler)
   }, [openAdd])
+
+  const [dragging, setDragging] = useState(false)
+  useEffect(() => {
+    const wv = (window as any).chrome?.webview
+    if (!wv?.postMessageWithAdditionalObjects) return
+    let depth = 0
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files')
+    const enter = (e: DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); depth++; setDragging(true) }
+    const over = (e: DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer!.dropEffect = 'copy' }
+    const leave = (e: DragEvent) => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (depth === 0) setDragging(false) }
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      depth = 0
+      setDragging(false)
+      const files = [...(e.dataTransfer?.files ?? [])]
+      if (files.length) wv.postMessageWithAdditionalObjects({ type: 'filesDropped' }, files)
+    }
+    window.addEventListener('dragenter', enter)
+    window.addEventListener('dragover', over)
+    window.addEventListener('dragleave', leave)
+    window.addEventListener('drop', drop)
+    return () => { window.removeEventListener('dragenter', enter); window.removeEventListener('dragover', over); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop) }
+  }, [])
 
   const down = history[history.length - 1]?.down ?? 0
   const up = history[history.length - 1]?.up ?? 0
@@ -163,6 +188,14 @@ export function App() {
       <AddDialog open={add.open} initial={add.text} onClose={() => setAdd({ open: false, text: '' })} />
       <PairingPrompt />
       <Toaster />
+      {dragging && (
+        <div className="pointer-events-none fixed inset-3 z-[70] flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-bg/70 backdrop-blur-sm animate-fade">
+          <div className="text-center">
+            <div className="text-[18px] font-semibold tracking-tight">Drop to play</div>
+            <div className="mt-1 text-[13px] text-muted">Video, audio and subtitle files</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

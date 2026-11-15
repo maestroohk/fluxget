@@ -17,6 +17,24 @@ internal static partial class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        var update = Array.IndexOf(args, "--update-progress");
+        if (update >= 0)
+        {
+            Ui.Page = Page.Updating;
+            Ui.Version = update + 1 < args.Length ? args[update + 1] : "";
+            var started = DateTime.Now;
+            Task.Run(async () =>
+            {
+                var until = DateTime.Now.AddMinutes(3);
+                while (DateTime.Now < until)
+                {
+                    await Task.Delay(500);
+                    if (Process.GetProcessesByName("FluxGet").Any(p => { try { return p.StartTime > started && p.MainWindowHandle != 0; } catch (Exception) { return false; } })) break;
+                }
+                Native.PostMessageW(_hwnd, 0x0010, 0, 0);
+            });
+            return Ui.Run();
+        }
         _payload = Task.Run(() => { try { return ExtractPayload(args); } catch (Exception) { return null; } });
         var at = Array.IndexOf(args, "--product");
         if (at >= 0 && at + 1 < args.Length) _product = args[at + 1];

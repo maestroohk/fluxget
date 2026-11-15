@@ -48,6 +48,8 @@ else {
     Write-Warning 'No signing certificate configured: the installer will be unsigned.'
 }
 
+& (Join-Path $PSScriptRoot 'build-setup.ps1') -Version $Version -PublishDir $publish
+
 vpk pack --packId FluxGet --packVersion $Version --packDir $publish --mainExe FluxGet.exe --packTitle FluxGet --icon src/FluxGet.Desktop/fluxget.ico --splashImage src/FluxGet.Desktop/installer-splash.png --packAuthors FluxGet --outputDir $releases @signArgs
 if ($LASTEXITCODE -ne 0) { throw "vpk pack failed with exit code $LASTEXITCODE" }
 

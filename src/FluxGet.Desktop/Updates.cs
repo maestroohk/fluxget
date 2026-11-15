@@ -48,8 +48,10 @@ internal sealed class Updates
         }
     }
 
-    public void ApplyAndRestart()
+    public void ApplyAndRestart(bool silent, string[]? restartArgs = null)
     {
-        if (_manager is not null && _ready is not null) _manager.ApplyUpdatesAndRestart(_ready);
+        if (_manager is null || _ready is null) return;
+        if (silent) _manager.WaitExitThenApplyUpdates(_ready, true, true, restartArgs ?? []);
+        else _manager.ApplyUpdatesAndRestart(_ready, restartArgs);
     }
 }

@@ -58,6 +58,7 @@ internal sealed partial class MainForm : Form
             _shownMs = Program.Clock.ElapsedMilliseconds;
             _notifier = new Notifier(this, ShowWindow, id => _manager.Find(id), () => _ = ApplyUpdateAsync());
             _ = Task.Run(Branding.Ensure);
+            _ = Task.Run(CleanUpdateLeftovers);
         };
 
         _manager.JobChanged += OnJobChanged;
@@ -199,6 +200,14 @@ internal sealed partial class MainForm : Form
                 break;
             case "uiReady":
                 HideSplash();
+                if (Program.UpdatedTo is { } updated) PostToUi(new { type = "toast", text = $"FluxGet was updated to {updated}", tone = "ok" });
+                Program.UpdatedTo = null;
+                break;
+            case "filesDropped":
+                var dropped = e.AdditionalObjects?.OfType<CoreWebView2File>().Select(f => f.Path).Where(File.Exists).ToList() ?? [];
+                var playable = dropped.Where(f => MediaFiles.Kind(f) is not null || SubtitleExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase)).ToList();
+                if (playable.Count > 0) PlayFiles(playable);
+                else if (dropped.Count > 0) PostToUi(new { type = "toast", text = "Drop video, audio or subtitle files to play them.", tone = "bad" });
                 break;
             case "theme":
                 SetDarkTitleBar(doc.RootElement.TryGetProperty("dark", out var d) && d.GetBoolean());
@@ -251,13 +260,47 @@ internal sealed partial class MainForm : Form
         if (state == "ready" && !wasReady && version is not null) _notifier?.UpdateReady(version);
     }
 
-    private async Task ApplyUpdateAsync()
+    private async Task ApplyUpdateAsync(string[]? restartArgs = null)
     {
         if (_updates.ReadyVersion is null) return;
         _exiting = true;
-        PostToUi(new { type = "update", state = "applying", version = _updates.ReadyVersion });
+        var version = _updates.ReadyVersion;
+        PostToUi(new { type = "update", state = "applying", version });
+        var silent = StartUpdateWindow(version);
         try { await _server.StopAsync(); } catch (Exception) { }
-        _updates.ApplyAndRestart();
+        _updates.ApplyAndRestart(silent, restartArgs);
+        if (silent)
+        {
+            _tray.Visible = false;
+            Application.Exit();
+        }
+    }
+
+    private static bool StartUpdateWindow(string version)
+    {
+        var helper = Path.Combine(AppContext.BaseDirectory, "tools", "FluxGet-Setup.exe");
+        if (!File.Exists(helper)) return false;
+        try
+        {
+            var copy = Path.Combine(Path.GetTempPath(), $"FluxGet-Update-{Guid.NewGuid():N}.exe");
+            File.Copy(helper, copy);
+            Process.Start(new ProcessStartInfo(copy) { ArgumentList = { "--update-progress", version }, UseShellExecute = false });
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static void CleanUpdateLeftovers()
+    {
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(Path.GetTempPath(), "FluxGet-Update-*.exe"))
+                try { if (File.GetCreationTimeUtc(f) < DateTime.UtcNow.AddMinutes(-10)) File.Delete(f); } catch (Exception) { }
+        }
+        catch (Exception) { }
     }
 
     private void PostToUi(object message)

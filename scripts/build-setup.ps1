@@ -1,22 +1,38 @@
 param(
     [Parameter(Mandatory)] [string]$Version,
-    [string]$Releases = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts/releases')
+    [string]$Releases = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts/releases'),
+    [string]$PublishDir
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$payload = Join-Path $Releases 'FluxGet-win-Setup.exe'
-if (-not (Test-Path $payload)) { throw "Missing $payload; run vpk pack first." }
 $build = Join-Path $root 'artifacts/setup-wizard'
-Remove-Item $build -Recurse -Force -ErrorAction SilentlyContinue
+$wizard = Join-Path $build 'FluxGet-Setup.exe'
 
-dotnet publish (Join-Path $root 'src/FluxGet.Setup') -c Release -r win-x64 -p:PublishAot=true -p:Version=$Version -o $build
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning 'The setup wizard needs the Visual Studio C++ build tools (native AOT). Skipping FluxGet-Setup.exe.'
+if ($PublishDir) {
+    Remove-Item $build -Recurse -Force -ErrorAction SilentlyContinue
+    dotnet publish (Join-Path $root 'src/FluxGet.Setup') -c Release -r win-x64 -p:PublishAot=true -p:Version=$Version -o $build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning 'Native AOT needs the Visual Studio C++ build tools; building a .NET-dependent wizard for local testing only.'
+        Remove-Item $build -Recurse -Force -ErrorAction SilentlyContinue
+        dotnet publish (Join-Path $root 'src/FluxGet.Setup') -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=$Version -o $build
+        if ($LASTEXITCODE -ne 0) { throw 'Building the setup wizard failed.' }
+        New-Item -ItemType File (Join-Path $build '.not-native') -Force | Out-Null
+    }
+    New-Item -ItemType Directory -Force (Join-Path $PublishDir 'tools') | Out-Null
+    Copy-Item $wizard (Join-Path $PublishDir 'tools/FluxGet-Setup.exe') -Force
+    Write-Host 'Update window copied into the app'
     return
 }
 
+$payload = Join-Path $Releases 'FluxGet-win-Setup.exe'
+if (-not (Test-Path $payload)) { throw "Missing $payload; run vpk pack first." }
+if (-not (Test-Path $wizard)) { throw "Missing $wizard; run with -PublishDir first." }
+if (Test-Path (Join-Path $build '.not-native')) {
+    Write-Warning 'Skipping FluxGet-Setup.exe: the wizard was not built natively (needs the Visual Studio C++ build tools).'
+    return
+}
 $out = Join-Path $Releases 'FluxGet-Setup.exe'
-Copy-Item (Join-Path $build 'FluxGet-Setup.exe') $out -Force
+Copy-Item $wizard $out -Force
 $length = (Get-Item $payload).Length
 $stream = [IO.File]::Open($out, 'Append')
 try {

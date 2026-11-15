@@ -1520,6 +1520,26 @@
         "manual 2026-11-15: FluxGetTest package installed through the wizard into a custom folder in 6–10 s, uninstall entry at that folder, clean uninstall",
         "unverified: native AOT build runs in CI only"
       ]
+    },
+    {
+      "id": "FG-095",
+      "milestone": "M6",
+      "points": 2,
+      "priority": "P1",
+      "role": "user",
+      "goal": "see FluxGet's own window while it updates, and drop media onto the window to play it",
+      "value": "Feels like one product",
+      "deps": [],
+      "criteria": [
+        "No stock Velopack dialog during in-app updates",
+        "FluxGet reopens on the new version and says so",
+        "Dropping video, audio or subtitle files plays them"
+      ],
+      "status": "verified",
+      "evidence": [
+        "manual 2026-11-15: FluxGetTest 0.7.0 updated to 0.7.1 silently, only the FluxGet window seen, restart hook 0.7.1",
+        "self-test: Dropping a media file onto the window plays it"
+      ]
     }
   ]
 }
