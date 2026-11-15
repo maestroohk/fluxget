@@ -46,6 +46,7 @@ export interface Settings {
   seedRatio: number
   schedule: Schedule
   notifyOnComplete: boolean
+  browserMediaDetection: boolean
   ui?: Record<string, unknown> | null
 }
 

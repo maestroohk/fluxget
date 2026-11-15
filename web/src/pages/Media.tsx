@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AudioLines, Check, CheckSquare, Clapperboard, FileText, Film, Images, ListVideo, Loader2, Music2, Square, Wand2 } from 'lucide-react'
-import { api, type Job } from '../api'
+import { AudioLines, Check, CheckSquare, Clapperboard, FileText, Film, Images, ListVideo, Loader2, Music2, Play, Square, Wand2 } from 'lucide-react'
+import { api, desktop, type Job } from '../api'
+import { player } from '../player'
 import { useStore } from '../store'
 import { bytes, duration } from '../format'
-import { useRoute } from '../router'
+import { navigate, useRoute } from '../router'
 import { Button, Card, cx, Empty, Field, inputClass, Modal, SectionTitle, Segmented, Toggle } from '../ui'
 import { JobList } from '../components/jobs'
 import { JobDetail } from '../components/JobDetail'
@@ -92,7 +93,7 @@ export function Media() {
           {loading && <AnalyzeSkeleton />}
           {info && (info.type === 'gallery'
             ? <GalleryResult info={info} onDone={() => { setInfo(null); setUrl('') }} />
-            : <MediaResult info={info} onImages={g => setInfo(g)} onDone={() => { setInfo(null); setUrl('') }} />)}
+            : <MediaResult info={info} onImages={g => setInfo(g)} onDone={id => { setInfo(null); setUrl(''); if (id != null) setOpen(id) }} />)}
         </section>
 
         <section>
@@ -119,7 +120,7 @@ function AnalyzeSkeleton() {
   )
 }
 
-function MediaResult({ info, onDone, onImages }: { info: MediaInfo; onDone: () => void; onImages: (g: GalleryInfo) => void }) {
+function MediaResult({ info, onDone, onImages }: { info: MediaInfo; onDone: (jobId?: number) => void; onImages: (g: GalleryInfo) => void }) {
   const [mode, setMode] = useState<'video' | 'audio'>('video')
   const [height, setHeight] = useState<number | null>(info.video[0]?.height ?? null)
   const [container, setContainer] = useState('mp4')
@@ -144,12 +145,16 @@ function MediaResult({ info, onDone, onImages }: { info: MediaInfo; onDone: () =
   const download = async () => {
     setBusy(true)
     const items = isList ? entries.filter(e => selected.has(e.id)).map(e => ({ url: e.url, title: e.title, id: e.id })) : [{ url: info.url, title: info.title, id: info.id }]
-    const ok = await attempt(() => api.post('/api/media/download', {
-      items, group: isList ? info.title : null, mode, height, container,
-      audioFormat, audioQuality: fmt.qualities.length ? quality : null, subtitles: subs,
-    }), items.length === 1 ? 'Added to downloads' : `Queued ${items.length} items`)
+    let first: number | undefined
+    const ok = await attempt(async () => {
+      const r = await api.post<{ ids: number[] }>('/api/media/download', {
+        items, group: isList ? info.title : null, mode, height, container,
+        audioFormat, audioQuality: fmt.qualities.length ? quality : null, subtitles: subs,
+      })
+      first = r.ids[0]
+    }, items.length === 1 ? 'Download started' : `Queued ${items.length} items`)
     setBusy(false)
-    if (ok) onDone()
+    if (ok) onDone(first)
   }
 
   return (
@@ -254,6 +259,7 @@ function MediaResult({ info, onDone, onImages }: { info: MediaInfo; onDone: () =
           {finding ? <Loader2 size={14} className="animate-spin" /> : <Images size={14} />} Images on this page
         </Button>
         <span className="mr-auto flex items-center gap-1.5 text-[12px] text-muted">{mode === 'audio' ? <AudioLines size={14} /> : <Film size={14} />}{mode === 'audio' ? `${fmt.label}${fmt.qualities.length ? ` · ${quality} kbps` : ''}` : `${height ? label(height) : 'Best'} · ${container.toUpperCase()}`}</span>
+        {!isList && desktop.available() && <Button onClick={() => { player('openUrl', { url: info.url }); navigate('player') }}><Play size={14} /> Stream</Button>}
         <Button variant="primary" disabled={busy || (isList && selected.size === 0)} onClick={download}>{isList ? `Download ${selected.size}` : 'Download'}</Button>
       </div>
     </Card>

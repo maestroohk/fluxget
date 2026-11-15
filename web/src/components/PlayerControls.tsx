@@ -1,22 +1,28 @@
-import { useRef, useState, type ReactNode } from 'react'
-import { Captions, Gauge, Languages, Maximize, Minimize, Pause, PictureInPicture2, Play, SkipBack, SkipForward, Volume1, Volume2, VolumeX } from 'lucide-react'
-import { clock, isPlaying, player, type PlayerState } from '../player'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Captions, Gauge, Languages, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, SkipBack, SkipForward, Sparkles, Volume1, Volume2, VolumeX } from 'lucide-react'
+import { captionLabel, clock, isPlaying, player, startLiveCaptions, stopLiveCaptions, type PlayerState } from '../player'
 import { cx } from '../ui'
 
-type Menu = 'speed' | 'audio' | 'subs' | null
+type Menu = 'speed' | 'audio' | 'subs' | 'quality' | null
 
 export function PlayerControls({ p, overlay, onPanel }: { p: PlayerState | null; overlay?: boolean; onPanel?: (section: 'playback') => void }) {
   const [menu, setMenu] = useState<Menu>(null)
+  const root = useRef<HTMLDivElement>(null)
   const disabled = !p?.loaded
   const playing = isPlaying(p)
-  const open = (m: Menu) => {
-    if (!overlay) { onPanel?.('playback'); return }
-    setMenu(cur => (cur === m ? null : m))
-  }
+  const open = (m: Menu) => setMenu(cur => (cur === m ? null : m))
+  const waiting = p?.loaded && (p.state === 'opening' || p.state === 'buffering')
+
+  useEffect(() => {
+    if (!menu) return
+    const close = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setMenu(null) }
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [menu])
 
   return (
-    <div className={cx('relative select-none', overlay ? 'px-5 pt-3 pb-3.5' : 'border-t border-white/[0.06] bg-[#0e0f12] px-5 pt-2 pb-3')}>
-      {overlay && menu && p && <Popover menu={menu} p={p} onClose={() => setMenu(null)} />}
+    <div ref={root} className={cx('relative select-none', overlay ? 'px-5 pt-3 pb-3.5' : 'z-20 border-t border-white/[0.06] bg-[#0e0f12] px-5 pt-2 pb-3')}>
+      {menu && p && <Popover menu={menu} p={p} onClose={() => setMenu(null)} onPanel={onPanel} />}
       <Timeline p={p} />
       <div className="mt-1.5 flex items-center gap-1 text-[#edece8]">
         <Btn label="Previous (P)" onClick={() => player('prev')} disabled={disabled}><SkipBack size={18} fill="currentColor" /></Btn>
@@ -26,13 +32,24 @@ export function PlayerControls({ p, overlay, onPanel }: { p: PlayerState | null;
           {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
         </button>
         <Btn label="Next (N)" onClick={() => player('next')} disabled={disabled || !p || p.index >= p.queue.length - 1}><SkipForward size={18} fill="currentColor" /></Btn>
-        <span className="num ml-2 text-[12.5px] text-[#c4c4c0]">{clock(p?.time ?? 0)} <span className="text-[#6f727a]">/ {clock(p?.length ?? 0)}</span></span>
+        {p?.live
+          ? <span className="ml-2 rounded bg-[#e5484d] px-1.5 py-0.5 text-[10.5px] font-bold tracking-wide text-white">LIVE</span>
+          : <span className="num ml-2 text-[12.5px] text-[#c4c4c0]">{clock(p?.time ?? 0)} <span className="text-[#6f727a]">/ {clock(p?.length ?? 0)}</span></span>}
+        {waiting && <span className="ml-2 flex items-center gap-1.5 text-[12px] text-[#8d9098]"><Loader2 size={13} className="animate-spin" />{p?.status ?? (p?.state === 'buffering' ? 'Buffering' : 'Opening')}</span>}
+        {!waiting && p?.status && <span className="ml-2 truncate text-[12px] text-[#ffb59e]">{p.status}</span>}
         <div className="min-w-0 flex-1 truncate px-3 text-center text-[12.5px] text-[#8d9098]">{overlay ? p?.title : ''}</div>
+        {p?.qualities && p.qualities.length > 1 && (
+          <Btn label="Quality" onClick={() => open('quality')} disabled={disabled} active={menu === 'quality'}>
+            <span className="flex items-center gap-1 text-[12px] font-semibold"><Settings2 size={16} />{p.quality ? `${p.quality}p` : 'Auto'}</span>
+          </Btn>
+        )}
         <Btn label="Playback speed" onClick={() => open('speed')} disabled={disabled} active={menu === 'speed'}>
           <span className="flex items-center gap-1 text-[12px] font-semibold"><Gauge size={16} />{p ? `${p.rate}×` : '1×'}</span>
         </Btn>
-        <Btn label="Subtitles" onClick={() => open('subs')} disabled={disabled} active={menu === 'subs' || (p?.subtitleTrack ?? -1) >= 0}><Captions size={18} /></Btn>
-        <Btn label="Audio track" onClick={() => open('audio')} disabled={disabled || (p?.audioTracks.length ?? 0) < 2}><Languages size={17} /></Btn>
+        <Btn label="Subtitles (C for live subtitles)" onClick={() => open('subs')} disabled={disabled} active={menu === 'subs' || (p?.subtitleTrack ?? -1) >= 0 || !!p?.captions}>
+          <span className="relative flex"><Captions size={18} />{p?.captions && <span className="absolute -top-1 -right-1.5 size-2 rounded-full bg-[#ff6e43]" />}</span>
+        </Btn>
+        <Btn label="Audio track" onClick={() => open('audio')} disabled={disabled || (p?.audioTracks.length ?? 0) < 2} active={menu === 'audio'}><Languages size={17} /></Btn>
         <Volume p={p} />
         {p?.mode !== 'mini' && <Btn label="Mini player" onClick={() => player('mode', { value: 'mini' })} disabled={disabled || !p?.hasVideo}><PictureInPicture2 size={17} /></Btn>}
         <Btn label={p?.mode === 'fullscreen' ? 'Exit fullscreen (F)' : 'Fullscreen (F)'} onClick={() => player('mode', { value: p?.mode === 'fullscreen' ? 'embedded' : 'fullscreen' })} disabled={disabled || !p?.hasVideo}>
@@ -98,21 +115,31 @@ function Volume({ p }: { p: PlayerState | null }) {
   )
 }
 
-function Popover({ menu, p, onClose }: { menu: Exclude<Menu, null>; p: PlayerState; onClose: () => void }) {
-  const item = (label: ReactNode, active: boolean, onClick: () => void, key: string | number) => (
-    <button key={key} type="button" onClick={() => { onClick(); onClose() }}
-      className={cx('flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left text-[13px] hover:bg-white/10', active && 'text-[#ff6e43]')}>
+function Popover({ menu, p, onClose, onPanel }: { menu: Exclude<Menu, null>; p: PlayerState; onClose: () => void; onPanel?: (section: 'playback') => void }) {
+  const item = (label: ReactNode, active: boolean, onClick: () => void, key: string | number, keepOpen = false) => (
+    <button key={key} type="button" onClick={() => { onClick(); if (!keepOpen) onClose() }}
+      className={cx('flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-left text-[13px] hover:bg-white/10', active && 'text-[#ff6e43]')}>
       {label}{active && <span>✓</span>}
     </button>
   )
+  const heading = (text: string) => <div className="px-3 pt-2 pb-1 text-[10.5px] font-semibold tracking-[0.08em] text-[#6f727a] uppercase">{text}</div>
   return (
-    <div className="mb-2 ml-auto max-h-64 w-60 overflow-y-auto rounded-xl border border-white/10 bg-[#1d1f24] p-1.5 text-[#edece8]">
+    <div className={cx('mb-2 ml-auto overflow-y-auto rounded-xl border border-white/10 bg-[#1d1f24] p-1.5 text-[#edece8]', menu === 'subs' ? 'w-80' : 'w-56', 'max-h-[min(15rem,38vh)]')}>
       {menu === 'speed' && p.speeds.map(s => item(`${s}×`, Math.abs(p.rate - s) < 0.01, () => player('rate', { value: s }), s))}
+      {menu === 'quality' && p.qualities.map(h => item(`${h}p${h >= 2160 ? ' 4K' : h >= 1440 ? ' QHD' : h >= 720 ? ' HD' : ''}`, p.quality === h, () => player('quality', { value: h }), h))}
       {menu === 'audio' && p.audioTracks.filter(t => t.id >= 0).map(t => item(t.name, p.audioTrack === t.id, () => player('audioTrack', { id: t.id }), t.id))}
       {menu === 'subs' && <>
-        {item('Off', p.subtitleTrack < 0, () => player('subtitleTrack', { id: -1 }), 'off')}
-        {p.subtitleTracks.filter(t => t.id >= 0).map(t => item(t.name, p.subtitleTrack === t.id, () => player('subtitleTrack', { id: t.id }), t.id))}
+        {p.captionsAvailable && <>
+          {item(<span className="flex items-center gap-2"><Sparkles size={14} className="text-[#ff6e43]" /> Live subtitles (generated)</span>, !!p.captions,
+            () => (p.captions ? stopLiveCaptions() : startLiveCaptions()), 'live', true)}
+          <div className="px-3 pb-1.5 text-[11.5px] leading-snug text-[#8d9098]">{p.captions ? captionLabel(p.captions) : 'Made on this computer as the video plays. Nothing is uploaded. Shortcut: C'}</div>
+        </>}
         {item('Add subtitle file…', false, () => player('subtitleDialog'), 'add')}
+        {onPanel && item('Language, model and size…', false, () => onPanel('playback'), 'opts')}
+        <div className="my-1 h-px bg-white/10" />
+        {heading('Tracks')}
+        {item('Off', p.subtitleTrack < 0 && !p.captions, () => { player('subtitleTrack', { id: -1 }); if (p.captions) stopLiveCaptions() }, 'off')}
+        {p.subtitleTracks.filter(t => t.id >= 0).map(t => item(t.name, p.subtitleTrack === t.id, () => player('subtitleTrack', { id: t.id }), t.id))}
       </>}
     </div>
   )

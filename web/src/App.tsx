@@ -17,7 +17,7 @@ import { Scheduler } from './pages/Scheduler'
 import { Completed } from './pages/Completed'
 import { SettingsPage } from './pages/Settings'
 import { PlayerPage } from './pages/Player'
-import { setPlayerState } from './player'
+import { player, setPlayerState } from './player'
 
 const NAV: { page: Page; label: string; icon: ReactNode }[] = [
   { page: 'overview', label: 'Overview', icon: <LayoutGrid size={17} /> },
@@ -62,7 +62,9 @@ export function App() {
     const paste = (e: ClipboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input,textarea,[contenteditable]')) return
       const text = e.clipboardData?.getData('text') ?? ''
-      if (extractUrls(text).length) { e.preventDefault(); openAdd(text) }
+      const urls = extractUrls(text)
+      if (urls.length && location.hash.startsWith('#/player') && desktop.available()) { e.preventDefault(); player('openUrl', { url: urls[0] }); return }
+      if (urls.length) { e.preventDefault(); openAdd(text) }
     }
     window.addEventListener('keydown', key)
     window.addEventListener('paste', paste)

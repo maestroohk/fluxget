@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, Disc3, FileVideo, FolderOpen, Keyboard, Library, Link2, ListVideo, Music, Play, RotateCcw, RotateCw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Disc3, FileVideo, FolderOpen, Keyboard, Library, Link2, ListVideo, Loader2, Music, Play, RotateCcw, RotateCw, Search, SlidersHorizontal, Sparkles, Trash2, X } from 'lucide-react'
 import { api, desktop } from '../api'
 import { ago, bytes } from '../format'
-import { clock, handlePlayerKey, player, SHORTCUTS, usePlayer, type PlayerState } from '../player'
+import { captionLabel, captionPrefs, clock, handlePlayerKey, player, setCaptionPrefs, SHORTCUTS, startLiveCaptions, stopLiveCaptions, usePlayer, type PlayerState } from '../player'
 import { PlayerControls } from '../components/PlayerControls'
 import { SubtitleGenerator } from '../components/SubtitleGenerator'
 import { attempt } from '../components/toast'
@@ -60,7 +60,7 @@ export function PlayerPage() {
         <div ref={stage} className="relative min-h-0 flex-1" onDoubleClick={() => loaded && p?.hasVideo && player('mode', { value: 'fullscreen' })}>
           {!loaded && <EmptyStage url={url} setUrl={setUrl} />}
           {loaded && p?.state === 'error' && <ErrorStage p={p} />}
-          {loaded && p?.state !== 'error' && !p?.hasVideo && <AudioStage p={p!} />}
+          {loaded && p?.state !== 'error' && !p?.hasVideo && (p?.state === 'opening' || p?.state === 'buffering' ? <OpeningStage p={p!} /> : <AudioStage p={p!} />)}
           {loaded && p?.mode !== 'embedded' && <ElsewhereStage p={p!} />}
         </div>
         <PlayerControls p={p} onPanel={() => setTab('playback')} />
@@ -105,22 +105,21 @@ function EmptyStage({ url, setUrl }: { url: string; setUrl: (v: string) => void 
   const [recent, setRecent] = useState<RecentItem[]>([])
   useEffect(() => { void api.get<RecentItem[]>('/api/player/recent').then(setRecent).catch(() => {}) }, [])
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 overflow-y-auto p-8 text-[#edece8]">
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5"><Play size={24} className="ml-0.5 text-[#ff6e43]" fill="currentColor" /></div>
-        <h2 className="text-[18px] font-semibold tracking-tight">Watch and listen</h2>
-        <p className="mt-1 text-[13px] text-[#8d9098]">Open a file, drop media anywhere on this window, or pick something from your library.</p>
-      </div>
-      <div className="flex flex-wrap justify-center gap-2">
-        <button onClick={() => player('openDialog')} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#edece8] px-4 text-[13px] font-semibold text-[#111215] hover:bg-white"><FolderOpen size={15} /> Open files</button>
-        <form onSubmit={e => { e.preventDefault(); if (url.trim()) player('openUrl', { url: url.trim() }) }} className="flex gap-2">
-          <div className="relative">
-            <Link2 size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-[#6f727a]" />
-            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Stream address (http, rtsp…)" aria-label="Stream address"
-              className="h-9 w-64 rounded-lg border border-white/10 bg-white/5 pr-3 pl-8 text-[13px] text-white outline-none placeholder:text-[#6f727a] focus:border-white/25" />
-          </div>
-          <button disabled={!url.trim()} className="h-9 rounded-lg border border-white/10 px-3 text-[13px] font-medium hover:bg-white/10 disabled:opacity-40">Play</button>
-        </form>
+    <div className="flex h-full overflow-y-auto text-[#edece8]">
+     <div className="m-auto flex w-full max-w-2xl flex-col items-center gap-4 p-6">
+      <h2 className="flex items-center gap-2 text-[17px] font-semibold tracking-tight"><Play size={18} className="text-[#ff6e43]" fill="currentColor" /> Watch and listen</h2>
+      <form onSubmit={e => { e.preventDefault(); if (url.trim()) player('openUrl', { url: url.trim() }) }} className="flex w-full max-w-xl gap-2">
+        <div className="relative flex-1">
+          <Link2 size={15} className="absolute top-1/2 left-3 -translate-y-1/2 text-[#6f727a]" />
+          <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Paste a YouTube or other video link to stream it" aria-label="Link to stream"
+            className="h-10 w-full rounded-lg border border-white/10 bg-white/5 pr-3 pl-9 text-[13.5px] text-white outline-none placeholder:text-[#6f727a] focus:border-white/25" />
+        </div>
+        <button disabled={!url.trim()} className="h-10 rounded-lg bg-[#ff6e43] px-4 text-[13px] font-semibold text-white hover:brightness-110 disabled:opacity-40">Stream</button>
+      </form>
+      <p className="-mt-2 text-center text-[12px] text-[#6f727a]">Plays straight from the site without downloading — YouTube, Vimeo, X, Facebook, Twitch and more. Paste anywhere on this screen.</p>
+      <div className="flex items-center gap-3 text-[12.5px] text-[#8d9098]">
+        <button onClick={() => player('openDialog')} className="inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 px-3 font-medium text-[#edece8] hover:bg-white/10"><FolderOpen size={14} /> Open files</button>
+        <span>or drop media anywhere on this window</span>
       </div>
       {recent.length > 0 && (
         <div className="w-full max-w-2xl">
@@ -139,6 +138,7 @@ function EmptyStage({ url, setUrl }: { url: string; setUrl: (v: string) => void 
           </div>
         </div>
       )}
+     </div>
     </div>
   )
 }
@@ -155,6 +155,16 @@ function ErrorStage({ p }: { p: PlayerState }) {
       <div className="max-w-md text-[14px]">{p.error}</div>
       <div className="truncate text-[12px] text-[#6f727a]" title={p.source ?? ''}>{p.title}</div>
       <div className="flex gap-2"><Button size="sm" onClick={() => player('play')}>Try again</Button><Button size="sm" variant="ghost" onClick={() => player('openDialog')}>Open another file</Button></div>
+    </div>
+  )
+}
+
+function OpeningStage({ p }: { p: PlayerState }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-[#edece8]">
+      <Loader2 size={28} className="animate-spin text-[#ff6e43]" />
+      <div className="max-w-md truncate text-[14px] font-medium">{p.title}</div>
+      <div className="text-[12.5px] text-[#8d9098]">{p.status ?? (p.state === 'buffering' ? 'Buffering…' : 'Opening…')}</div>
     </div>
   )
 }
@@ -288,6 +298,7 @@ function PlaybackTab({ p }: { p: PlayerState | null }) {
           {!p.isStream && p.source && <SubtitleGenerator mediaPath={p.source} />}
         </div>
         <p className="text-[11.5px] text-muted">SRT, ASS, SSA and VTT files work. You can also drop a subtitle file onto the player.</p>
+        {p.captionsAvailable && <LiveCaptionsPanel p={p} />}
         {delay('Subtitle delay', 'subtitleDelay', p.subtitleDelayMs)}
         <Row label="Subtitle size">
           <select className={inputClass + ' h-8 w-28 text-[12px]'} value={p.subtitleScale} onChange={e => player('subtitleScale', { value: Number(e.target.value) })}>
@@ -323,6 +334,42 @@ function PlaybackTab({ p }: { p: PlayerState | null }) {
           <Button size="sm" variant="ghost" onClick={() => player('frame')}>Step one frame (.)</Button>
         </Section>
       )}
+    </div>
+  )
+}
+
+const CAPTION_LANGUAGES: [string, string][] = [
+  ['auto', 'Detect automatically'], ['en', 'English'], ['fr', 'French'], ['es', 'Spanish'], ['pt', 'Portuguese'], ['de', 'German'], ['it', 'Italian'],
+  ['sw', 'Swahili'], ['ar', 'Arabic'], ['hi', 'Hindi'], ['zh', 'Chinese'], ['ja', 'Japanese'], ['ko', 'Korean'], ['ru', 'Russian'], ['tr', 'Turkish'], ['nl', 'Dutch'],
+]
+
+function LiveCaptionsPanel({ p }: { p: PlayerState }) {
+  const [prefs, setPrefs] = useState(captionPrefs)
+  const update = (patch: Partial<typeof prefs>) => {
+    const next = { ...prefs, ...patch }
+    setPrefs(next)
+    setCaptionPrefs(next)
+    if (p.captions) startLiveCaptions(next)
+  }
+  const on = !!p.captions
+  return (
+    <div className="mt-3 rounded-xl border border-line bg-sunken/50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 font-medium"><Sparkles size={14} className="text-accent" /> Live subtitles</div>
+        <Toggle label="Live subtitles" checked={on} onChange={v => (v ? startLiveCaptions(prefs) : stopLiveCaptions())} />
+      </div>
+      <p className="mt-1 text-[11.5px] text-muted">{on ? captionLabel(p.captions) : 'Generated on this computer a little ahead of what you are watching, for files and streams. Nothing is uploaded. Press C to switch on or off.'}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <select className={inputClass + ' h-8 text-[12px]'} value={prefs.model} onChange={e => update({ model: e.target.value })} aria-label="Speech model">
+          <option value="tiny">Fastest (Tiny, 75 MB)</option>
+          <option value="base">Balanced (Base, 142 MB)</option>
+          <option value="small">Most accurate (Small, 466 MB)</option>
+        </select>
+        <select className={inputClass + ' h-8 text-[12px]'} value={prefs.language} onChange={e => update({ language: e.target.value })} aria-label="Spoken language">
+          {CAPTION_LANGUAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </div>
+      <label className="mt-2 flex items-center gap-2 text-[12px] text-ink-2"><Toggle label="Translate to English" checked={prefs.translate} onChange={v => update({ translate: v })} /> Translate to English</label>
     </div>
   )
 }

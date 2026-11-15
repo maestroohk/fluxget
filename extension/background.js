@@ -1,4 +1,4 @@
-import { call, cookieHeader, isHttp, isMediaPage, openMediaInApp, sendDownload, settings } from './shared.js'
+import { appConfig, cachedConfig, call, cookieHeader, isHttp, isMediaPage, openMediaInApp, playInApp, sendDownload, settings } from './shared.js'
 
 const MENU = { link: 'fg-link', media: 'fg-media', page: 'fg-page' }
 
@@ -90,6 +90,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     'fg-open-file': async () => { await call('POST', `/api/jobs/${msg.id}/open`); return { ok: true } },
     'fg-open-app': async () => { await call('POST', '/api/app/activate', { argument: null }); return { ok: true } },
     'fg-open-media': async () => { await openMediaInApp(msg.url); return { ok: true } },
+    'fg-play': async () => { await playInApp(msg.url); return { ok: true } },
+    'fg-config': async () => ({ ok: true, ...(await appConfig()) }),
+    'fg-detected-tab': async () => ({ ok: true, items: await detectedFor(sender.tab?.id) }),
   }
   if (handlers[msg?.type]) {
     handlers[msg.type]().then(reply, e => reply({ ok: false, error: e.message }))
@@ -118,14 +121,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 })
 
 async function syncContentScript() {
-  const s = await settings()
-  const has = await chrome.permissions.contains({ origins: ['<all_urls>'] })
-  const existing = await chrome.scripting.getRegisteredContentScripts({ ids: ['fg-video'] })
-  if (s.videoButton && has && existing.length === 0) {
-    await chrome.scripting.registerContentScripts([{ id: 'fg-video', js: ['content.js'], matches: ['http://*/*', 'https://*/*'], runAt: 'document_idle', allFrames: false }])
-  } else if ((!s.videoButton || !has) && existing.length > 0) {
-    await chrome.scripting.unregisterContentScripts({ ids: ['fg-video'] })
-  }
+  try {
+    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: ['fg-video'] })
+    if (existing.length > 0) await chrome.scripting.unregisterContentScripts({ ids: ['fg-video'] })
+  } catch {}
 }
 
 const MEDIA_TYPE = /^(video\/|audio\/|application\/(vnd\.apple\.mpegurl|x-mpegurl|dash\+xml))/i
@@ -133,6 +132,8 @@ const MEDIA_TYPE = /^(video\/|audio\/|application\/(vnd\.apple\.mpegurl|x-mpegur
 if (chrome.webRequest) {
   chrome.webRequest.onHeadersReceived.addListener(details => {
     if (details.tabId < 0) return
+    void appConfig()
+    if (!cachedConfig().detectMedia) return
     const type = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-type')?.value || ''
     if (!MEDIA_TYPE.test(type)) return
     const length = Number(details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-length')?.value || 0)

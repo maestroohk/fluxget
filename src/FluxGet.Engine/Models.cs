@@ -109,6 +109,7 @@ public sealed record EngineSettings
     public double SeedRatio { get; init; } = 1.0;
     public ScheduleWindow Schedule { get; init; } = ScheduleWindow.Default;
     public bool NotifyOnComplete { get; init; } = true;
+    public bool BrowserMediaDetection { get; init; } = true;
     public JsonElement? Ui { get; init; }
 
     public static string DefaultDownloadDirectory()

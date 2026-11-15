@@ -86,6 +86,14 @@ export function SettingsPage() {
         </Group>
 
         <Group title="Use FluxGet in your browser">
+          <div className="flex items-start justify-between gap-4 rounded-xl border border-line bg-sunken/50 p-3.5">
+            <div>
+              <div className="text-[13.5px] font-medium">Detect video and audio playing in browsers</div>
+              <p className="mt-0.5 text-[12.5px] text-muted">When a video or song plays on any site, a small FluxGet button appears on it with download and play options. Needs the FluxGet extension (steps below).</p>
+            </div>
+            <Toggle label="Detect media in browsers" checked={settings?.browserMediaDetection ?? true}
+              onChange={v => attempt(async () => { if (!settings) return; const next = await api.put<Settings>('/api/settings', { ...settings, browserMediaDetection: v }); setSettings(next); setDraft(d => (d ? { ...d, browserMediaDetection: v } : d)) }, v ? 'Browser detection on' : 'Browser detection off')} />
+          </div>
           <BrowserSetup />
         </Group>
 

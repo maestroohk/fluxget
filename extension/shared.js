@@ -3,9 +3,7 @@ export const DEFAULTS = {
   token: null,
   captureDownloads: false,
   captureMinMb: 5,
-  videoButton: false,
   siteButton: true,
-  detectMedia: false,
   sendCookies: false,
 }
 
@@ -82,8 +80,27 @@ export async function sendDownload(url, referrer, fileName) {
   })
 }
 
-export async function openMediaInApp(url) {
+export async function shareSession(url) {
   const cookie = await cookieHeader(url)
   if (cookie) await call('POST', '/api/media/session', { url, headers: { cookie, referer: null, userAgent: navigator.userAgent } }).catch(() => {})
+}
+
+export async function playInApp(url) {
+  await shareSession(url)
+  await call('POST', '/api/app/activate', { argument: `fluxget://play?url=${encodeURIComponent(url)}` })
+}
+
+let config = { detectMedia: true }
+let configAt = 0
+export async function appConfig() {
+  if (Date.now() - configAt < 15000) return config
+  configAt = Date.now()
+  try { config = { ...config, ...(await call('GET', '/api/extension/config')) } } catch {}
+  return config
+}
+export const cachedConfig = () => config
+
+export async function openMediaInApp(url) {
+  await shareSession(url)
   await call('POST', '/api/app/activate', { argument: `fluxget://media?url=${encodeURIComponent(url)}` })
 }

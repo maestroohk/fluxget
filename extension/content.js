@@ -3,13 +3,16 @@
   window.__fluxget = true
 
   const MEDIA_SITE = /(^|\.)(youtube\.com|youtu\.be|facebook\.com|instagram\.com|tiktok\.com|x\.com|twitter\.com|reddit\.com|vimeo\.com|twitch\.tv|dailymotion\.com|soundcloud\.com|bilibili\.com)$/i.test(location.hostname)
-  let enabled = true
-  chrome.storage.local.get(['siteButton', 'videoButton']).then(v => { enabled = MEDIA_SITE ? v.siteButton !== false : v.videoButton === true })
-  chrome.storage.onChanged.addListener(c => {
-    if (c.siteButton && MEDIA_SITE) enabled = c.siteButton.newValue !== false
-    if (c.videoButton && !MEDIA_SITE) enabled = c.videoButton.newValue === true
-  })
+  let enabled = false
+  const prefs = { siteButton: true, detect: true }
+  const recompute = () => { enabled = prefs.detect && (MEDIA_SITE ? prefs.siteButton : true) }
   const send = msg => chrome.runtime.sendMessage(msg).catch(e => ({ ok: false, error: String(e?.message || e) }))
+  chrome.storage.local.get('siteButton').then(v => { prefs.siteButton = v.siteButton !== false; recompute() })
+  chrome.storage.onChanged.addListener(c => {
+    if (c.siteButton) prefs.siteButton = c.siteButton.newValue !== false
+    recompute()
+  })
+  send({ type: 'fg-config' }).then(c => { if (c?.ok) { prefs.detect = c.detectMedia !== false; recompute() } })
 
   const h = (tag, props = {}, ...children) => {
     const el = document.createElement(tag)
@@ -32,6 +35,7 @@
   }
   const ICON_DOWN = 'M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14'
   const ICON_CHECK = 'M5 12.5l4.5 4.5L19 7.5'
+  const ICON_PLAY = 'M8 5.5v13l10.5-6.5z'
   const fmt = n => {
     if (!n) return ''
     const u = ['B', 'KB', 'MB', 'GB']
@@ -121,6 +125,10 @@
     return u.toString()
   }
   const anchorRect = () => {
+    if (target instanceof HTMLAudioElement) {
+      const right = innerWidth - 16
+      return { top: 12, bottom: 212, left: right - 300, right, width: 300, height: 200 }
+    }
     const player = document.querySelector('#movie_player') || document.querySelector('ytd-reel-video-renderer[is-active] #shorts-player')
     const el = (MEDIA_SITE && player && player.contains(target)) ? player : target
     return el?.getBoundingClientRect()
@@ -173,7 +181,9 @@
     else if (!open) { clearTimeout(hideTimer); hideTimer = setTimeout(hideButton, 600) }
   }, { passive: true })
   document.addEventListener('play', e => {
-    if (enabled && e.target instanceof HTMLVideoElement && !e.target.mediaKeys && !open) reveal(e.target, 4000)
+    if (!enabled || open) return
+    if (e.target instanceof HTMLVideoElement && !e.target.mediaKeys) reveal(e.target, 4000)
+    else if (e.target instanceof HTMLAudioElement && !e.target.mediaKeys) reveal(e.target, 6000)
   }, true)
   addEventListener('scroll', () => target && button.classList.contains('show') && schedule(), { passive: true })
   addEventListener('resize', () => target && button.classList.contains('show') && schedule(), { passive: true })
@@ -221,8 +231,25 @@
 
     const src = target?.currentSrc || target?.src || ''
     if (!MEDIA_SITE) {
-      if (!/^https?:/i.test(src)) return frame(h('div', { class: 'msg' }, 'This video is streamed in a way FluxGet cannot download directly.'))
-      return frame(h('div', { class: 'label' }, 'Video file'), row(ICON_DOWN, 'Download', src.split('/').pop().split('?')[0].slice(0, 40), '', () => startDirect(src)))
+      const kind = target instanceof HTMLAudioElement ? 'Audio' : 'Video'
+      if (/^https?:/i.test(src)) {
+        const name = src.split('/').pop().split('?')[0].slice(0, 40)
+        return frame(h('div', { class: 'label' }, `${kind} file`),
+          row(ICON_DOWN, 'Download', name, '', () => startDirect(src)),
+          row(ICON_PLAY, 'Play in FluxGet', 'stream, no download', '', () => playIt(src)))
+      }
+      const found = ((await send({ type: 'fg-detected-tab' }))?.items || []).slice(0, 5)
+      if (!open) return
+      if (!found.length) {
+        return frame(h('div', { class: 'msg' }, 'FluxGet has not seen this stream load yet. Play it for a few seconds, then click again — or try the page in FluxGet.'),
+          h('div', { class: 'foot' }, h('span'), h('button', { class: 'primary', onclick: () => send({ type: 'fg-open-media', url: location.href }) }, 'Open page in FluxGet')))
+      }
+      return frame(h('div', { class: 'label' }, `${kind} streams on this page`),
+        found.map(f => {
+          const name = f.manifest ? 'Stream (all qualities)' : (f.url.split('/').pop().split('?')[0].slice(0, 32) || f.type)
+          return h('div', {}, row(ICON_DOWN, name, f.manifest ? 'HLS/DASH' : f.type, f.size ? fmt(f.size) : '', () => f.manifest ? send({ type: 'fg-open-media', url: f.url }) : startDirect(f.url)),
+            row(ICON_PLAY, 'Play in FluxGet', 'stream, no download', '', () => playIt(f.url)))
+        }))
     }
 
     const url = pageUrl()
@@ -254,6 +281,7 @@
     const more = collapsed ? h('button', { class: 'more', type: 'button', onclick: () => { options.hidden = !options.hidden; more.textContent = options.hidden ? 'Download another format ▾' : 'Hide formats ▴' } }, 'Download another format ▾') : null
     frame(
       collapsed ? null : h('div', { class: 'title', title: info.title }, info.title),
+      collapsed ? null : row(ICON_PLAY, 'Play in FluxGet', 'stream now, no download', '', () => playIt(url)),
       more,
       options,
       h('div', { class: 'foot' }, h('button', { class: 'link', onclick: () => send({ type: 'fg-open-media', url }) }, 'More formats in FluxGet'), h('button', { class: 'link', onclick: () => send({ type: 'fg-open-app' }) }, 'Open FluxGet')))
@@ -278,6 +306,12 @@
     if (optionsEl) optionsEl.hidden = true
     renderDownloads()
     poll()
+  }
+
+  async function playIt(url) {
+    const r = await send({ type: 'fg-play', url })
+    if (r?.ok) close()
+    else { active.set(`play-${Date.now()}`, { title: url, label: 'Play', state: 'fail', text: r?.error || 'FluxGet could not open the player.' }); renderDownloads() }
   }
 
   async function startDirect(src) {

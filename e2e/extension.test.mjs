@@ -34,8 +34,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 const fileBytes = randomBytes(3 * 1024 * 1024 + 17)
 const fileSha = createHash('sha256').update(fileBytes).digest('hex')
+const wav = (() => {
+  const samples = 8000 * 40
+  const b = Buffer.alloc(44 + samples * 2)
+  b.write('RIFF', 0); b.writeUInt32LE(36 + samples * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22)
+  b.writeUInt32LE(8000, 24); b.writeUInt32LE(16000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(samples * 2, 40)
+  for (let i = 0; i < samples; i++) b.writeInt16LE(Math.round(Math.sin(i / 10) * 3000), 44 + i * 2)
+  return b
+})()
 const files = createServer((req, res) => {
-  if (req.url.startsWith('/page')) {
+  if (req.url.startsWith('/media-page')) {
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end('<audio id="a" src="/files/song.wav" muted autoplay></audio>')
+  } else if (req.url.startsWith('/files/song.wav')) {
+    res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wav.length })
+    res.end(wav)
+  } else if (req.url.startsWith('/page')) {
     res.writeHead(200, { 'Content-Type': 'text/html' })
     res.end('<a id="dl" href="/files/setup-e2e.bin" download>Download</a>')
   } else if (req.url.startsWith('/files/setup-e2e.bin')) {
@@ -154,6 +168,22 @@ try {
       return res.status
     }, port)
     assert.equal(session, 204)
+  })
+
+  await step('App setting turns browser media detection on, and it works on any site', async () => {
+    const config = await (await api('/api/extension/config')).json()
+    assert.equal(config.detectMedia, true)
+    const page = await context.newPage()
+    await page.goto(`${filesBase}/media-page`)
+    await page.waitForSelector('fluxget-root', { state: 'attached', timeout: 5000 })
+    const tabId = await worker.evaluate(async () => (await chrome.tabs.query({ url: '*://127.0.0.1/media-page*' }))[0]?.id)
+    let badge = ''
+    for (let i = 0; i < 40 && !badge; i++) { await sleep(250); badge = await worker.evaluate(id => chrome.action.getBadgeText({ tabId: id }), tabId) }
+    assert.equal(badge, '1')
+    const settings = await (await api('/api/settings')).json()
+    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ ...settings, browserMediaDetection: false }) })
+    assert.equal((await (await api('/api/extension/config')).json()).detectMedia, false)
+    await page.close()
   })
 
   await step('Revoked token returns the popup to pairing', async () => {

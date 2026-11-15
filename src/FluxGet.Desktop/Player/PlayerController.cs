@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using FluxGet.Engine;
+using FluxGet.Engine.Media;
 using FluxGet.Host;
 using LibVLCSharp.Shared;
 using LibVLCSharp.WinForms;
@@ -10,6 +11,10 @@ namespace FluxGet.Desktop.Player;
 internal enum PlayerMode { Embedded, Fullscreen, Mini }
 
 internal sealed record QueueItem(string Source, string Title, long? JobId, bool IsStream);
+
+internal sealed record CaptionSettings(string Model, string Language, bool Translate);
+
+internal delegate LiveCaptions CaptionFactory(string source, IReadOnlyDictionary<string, string>? headers, CaptionSettings settings, long startMs, long durationMs);
 
 internal sealed class PlayerController : IDisposable
 {
@@ -34,18 +39,45 @@ internal sealed class PlayerController : IDisposable
     private readonly Stopwatch _seekClock = new();
     private bool _reachedPlaying;
     private readonly Dictionary<string, List<string>> _extraSubtitles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Func<string, int?, bool, CancellationToken, Task<StreamPlan>>? _resolver;
+    private readonly Dictionary<string, StreamPlan> _plans = new(StringComparer.Ordinal);
+    private int _streamHeight = YtDlp.DefaultStreamHeight;
+    private int _stalls;
+    private volatile bool _stalling;
+    private long _stallWindow;
+    private long _quietUntil;
+    private string? _notice;
+    private long _noticeUntil;
+    private bool _retried;
+    private CancellationTokenSource? _resolving;
+    private string? _status;
+    private readonly CaptionFactory? _captionFactory;
+    private CaptionSettings? _captionSettings;
+    private LiveCaptions? _captions;
+    private string? _shownCaption;
+    private bool _marquee;
+    private int _marqueeSize;
+    private string? _captionsSaved;
 
-    public PlayerController(Control ui, JobStore store)
+    public PlayerController(Control ui, JobStore store, Func<string, int?, bool, CancellationToken, Task<StreamPlan>>? resolver = null, CaptionFactory? captionFactory = null)
     {
         _ui = ui;
         _store = store;
+        _resolver = resolver;
+        _captionFactory = captionFactory;
         Core.Initialize();
         _vlc = new LibVLC("--no-video-title-show", "--no-snapshot-preview", "--quiet");
         _mp = new MediaPlayer(_vlc) { EnableMouseInput = false, EnableKeyInput = false };
         View = new VideoView { MediaPlayer = _mp, BackColor = Color.Black, Visible = false, AllowDrop = true };
         _mp.Playing += (_, _) => _ui.BeginInvoke(OnPlaying);
         _mp.EndReached += (_, _) => _ui.BeginInvoke(() => OnEnded());
-        _mp.EncounteredError += (_, _) => _ui.BeginInvoke(() => SetError("This file can't be played. It may be damaged or use an unsupported format."));
+        _mp.EncounteredError += (_, _) => _ui.BeginInvoke(() => { if (!RetryStream()) SetError(Current?.IsStream == true ? "The stream stopped. Check your connection and try again." : "This file can't be played. It may be damaged or use an unsupported format."); });
+        _mp.Buffering += (_, e) =>
+        {
+            if (!_reachedPlaying || Environment.TickCount64 < Interlocked.Read(ref _quietUntil)) return;
+            if (e.Cache < 100f) { if (!_stalling) { _stalling = true; Interlocked.Increment(ref _stalls); } }
+            else _stalling = false;
+        };
         _timer.Tick += (_, _) => Tick();
         _timer.Start();
     }
@@ -57,6 +89,10 @@ internal sealed class PlayerController : IDisposable
     public long LastSeekMs { get; private set; } = -1;
     public MediaPlayer Engine => _mp;
     public QueueItem? Current => HasMedia ? _queue[_index] : null;
+    public string? CaptionText => _shownCaption;
+    public long LastResolveMs { get; private set; } = -1;
+    public LiveCaptions? Captions => _captions;
+    private StreamPlan? CurrentPlan => Current is { } c ? _plans.GetValueOrDefault(c.Source) : null;
 
     public event Action<PlayerMode>? ModeRequested;
 
@@ -96,12 +132,66 @@ internal sealed class PlayerController : IDisposable
         }
         var start = startAtMs ?? ResumePoint(item);
         _resumedFrom = startAtMs is null ? start : 0;
-        StartMedia(item, start);
+        _retried = false;
+        if (NeedsResolve(item) && !_plans.ContainsKey(item.Source)) Resolve(item, index, start);
+        else StartMedia(item, start);
+    }
+
+    private bool NeedsResolve(QueueItem item) =>
+        _resolver is not null && item.IsStream && !item.Source.Contains("/preview/", StringComparison.Ordinal)
+        && Uri.TryCreate(item.Source, UriKind.Absolute, out var u) && !YtDlp.IsDirectMedia(u);
+
+    private bool RetryStream()
+    {
+        if (_retried || Current is not { } item || !NeedsResolve(item)) return false;
+        _retried = true;
+        var at = Math.Max(0, _mp.Time);
+        _plans.Remove(item.Source);
+        Resolve(item, _index, at, fresh: true);
+        return true;
+    }
+
+    private void Resolve(QueueItem item, int index, long start, bool fresh = false)
+    {
+        _resolving?.Cancel();
+        var cts = _resolving = new CancellationTokenSource();
+        StopEngine();
+        _status = "Getting the stream…";
+        Push();
+        var height = _streamHeight;
+        var clock = Stopwatch.StartNew();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var plan = await _resolver!(item.Source, height > 0 ? height : null, fresh, cts.Token);
+                LastResolveMs = clock.ElapsedMilliseconds;
+                _ui.BeginInvoke(() =>
+                {
+                    if (cts.IsCancellationRequested || _index != index || index >= _queue.Count) return;
+                    _status = null;
+                    _plans[item.Source] = plan;
+                    var titled = item with { Title = plan.Title };
+                    _queue[index] = titled;
+                    StartMedia(titled, plan.Live ? 0 : start);
+                });
+            }
+            catch (Exception e) when (!cts.IsCancellationRequested)
+            {
+                _ui.BeginInvoke(() =>
+                {
+                    if (_index != index) return;
+                    _status = null;
+                    SetError(e is MediaException ? e.Message : "The stream could not be opened. Check the address or your connection.");
+                });
+            }
+            catch (OperationCanceledException) { }
+        });
     }
 
     private long ResumePoint(QueueItem item)
     {
-        if (item.IsStream && !item.Source.Contains("/preview/", StringComparison.Ordinal)) return 0;
+        if (item.IsStream && !item.Source.Contains("/preview/", StringComparison.Ordinal) && !NeedsResolve(item)) return 0;
         var p = _store.GetPlayback(Key(item));
         if (p is null || p.PositionMs < 10_000) return 0;
         if (p.DurationMs > 0 && p.DurationMs - p.PositionMs < 15_000) return 0;
@@ -111,7 +201,26 @@ internal sealed class PlayerController : IDisposable
     private void StartMedia(QueueItem item, long startMs)
     {
         StopEngine();
-        var media = item.IsStream ? new Media(_vlc, new Uri(item.Source)) : new Media(_vlc, item.Source, FromType.FromPath);
+        var plan = item.IsStream && NeedsResolve(item) ? _plans.GetValueOrDefault(item.Source) : null;
+        var media = plan is not null ? new Media(_vlc, new Uri(plan.VideoUrl))
+            : item.IsStream ? new Media(_vlc, new Uri(item.Source))
+            : new Media(_vlc, item.Source, FromType.FromPath);
+        if (item.IsStream)
+        {
+            media.AddOption(":network-caching=1000");
+            media.AddOption(":http-reconnect");
+        }
+        if (plan is not null)
+        {
+            if (plan.Headers.TryGetValue("User-Agent", out var ua)) media.AddOption(":http-user-agent=" + ua);
+            if (plan.Headers.TryGetValue("Referer", out var referer)) media.AddOption(":http-referrer=" + referer);
+            if (plan.AudioUrl is { } audio) media.AddSlave(MediaSlaveType.Audio, 4, audio);
+            if (plan.Adaptive)
+            {
+                media.AddOption($":adaptive-maxheight={(_streamHeight > 0 ? _streamHeight : YtDlp.DefaultStreamHeight)}");
+                if (_streamHeight > 0) media.AddOption(":adaptive-logic=highest");
+            }
+        }
         if (!_hardwareDecoding) media.AddOption(":avcodec-hw=none");
         if (_subtitleScale != 100) media.AddOption($":sub-text-scale={_subtitleScale}");
         if (_rotation != 0)
@@ -123,6 +232,11 @@ internal sealed class PlayerController : IDisposable
             foreach (var sub in subs.Where(File.Exists)) media.AddSlave(MediaSlaveType.Subtitle, 4, new Uri(sub).AbsoluteUri);
         if (startMs > 0) media.AddOption($":start-time={startMs / 1000.0:0.###}".Replace(',', '.'));
         _media = media;
+        _stalls = 0;
+        _stalling = false;
+        _stallWindow = Environment.TickCount64;
+        Interlocked.Exchange(ref _quietUntil, Environment.TickCount64 + 5000);
+        SyncCaptions(item, plan, startMs);
         _openClock.Restart();
         _reachedPlaying = false;
         _mp.Play(media);
@@ -175,9 +289,13 @@ internal sealed class PlayerController : IDisposable
             && _openClock.ElapsedMilliseconds > (opening.IsStream ? 25_000 : 10_000))
         {
             _openClock.Stop();
-            StopEngine();
-            SetError(opening.IsStream ? "The stream did not start. Check the address or your connection." : "This file can't be played. It may be damaged or not a media file.");
+            if (!RetryStream())
+            {
+                StopEngine();
+                SetError(opening.IsStream ? "The stream did not start. Check the address or your connection." : "This file can't be played. It may be damaged or not a media file.");
+            }
         }
+        AdaptToStalls();
         if (_seekTarget is { } target && Math.Abs(_mp.Time - target) < 1500)
         {
             LastSeekMs = _seekClock.ElapsedMilliseconds;
@@ -188,6 +306,7 @@ internal sealed class PlayerController : IDisposable
             _lastSave = Environment.TickCount64;
             SaveResume();
         }
+        UpdateCaptions();
         if (_sinks.Count > 0 && (HasMedia || _error is not null)) Push();
     }
 
@@ -208,8 +327,13 @@ internal sealed class PlayerController : IDisposable
             title = item?.Title,
             source = item?.Source,
             isStream = item?.IsStream ?? false,
-            state = _error is not null ? "error" : _mp.State.ToString().ToLowerInvariant(),
+            state = _error is not null ? "error" : _status is not null ? "opening" : _mp.State.ToString().ToLowerInvariant(),
             error = _error,
+            status = _status ?? (Environment.TickCount64 < _noticeUntil ? _notice : null),
+            live = CurrentPlan?.Live ?? false,
+            quality = CurrentPlan is { Adaptive: true } ? _streamHeight : CurrentPlan?.Height,
+            adaptive = CurrentPlan?.Adaptive ?? false,
+            qualities = CurrentPlan?.Heights.Where(h => h <= 2160) ?? [],
             time = _mp.Time,
             length = _mp.Length,
             volume = _mp.Volume,
@@ -236,7 +360,19 @@ internal sealed class PlayerController : IDisposable
             resumedFrom = _resumedFrom,
             index = _index,
             queue = _queue.Select(q => new { q.Title, q.Source, q.JobId, q.IsStream }),
-            speeds = Speeds
+            speeds = Speeds,
+            captions = _captions is null ? null : new
+            {
+                status = _captions.Status,
+                error = _captions.Error,
+                model = _captions.Model,
+                language = _captions.Language,
+                translate = _captions.Translate,
+                count = _captions.Count,
+                ready = _captions.Ready(_mp.Time),
+                saved = _captionsSaved
+            },
+            captionsAvailable = _captionFactory is not null
         };
     }
 
@@ -261,7 +397,10 @@ internal sealed class PlayerController : IDisposable
             case "rate": _mp.SetRate((float)Math.Clamp(D("value"), 0.25, 4)); break;
             case "rateStep": StepRate((int)D("value")); break;
             case "audioTrack": _mp.SetAudioTrack((int)D("id")); break;
-            case "subtitleTrack": _mp.SetSpu((int)D("id")); break;
+            case "subtitleTrack":
+                if ((int)D("id") >= 0 && _captions is not null) DisableCaptions();
+                _mp.SetSpu((int)D("id"));
+                break;
             case "subtitleDelay": _mp.SetSpuDelay((long)(D("ms") * 1000)); break;
             case "audioDelay": _mp.SetAudioDelay((long)(D("ms") * 1000)); break;
             case "aspect": _mp.AspectRatio = string.IsNullOrEmpty(S("value")) ? null : S("value"); break;
@@ -282,6 +421,11 @@ internal sealed class PlayerController : IDisposable
                 break;
             case "openJob": OpenJob((long)D("jobId"), S("path"), S("title"), B("append")); break;
             case "openUrl": OpenUrl(S("url"), B("append")); break;
+            case "quality": ChangeQuality((int)D("value")); break;
+            case "liveCaptions":
+                if (B("on")) EnableCaptions(new CaptionSettings(S("model") is { Length: > 0 } model && Transcriber.IsKnownModel(model) ? model : "base", S("language") is { Length: > 0 } lang ? lang : "auto", B("translate")));
+                else DisableCaptions();
+                break;
             case "addSubtitleFile": AddSubtitle(S("path")); break;
             case "mode": ModeRequested?.Invoke(Enum.TryParse<PlayerMode>(S("value"), true, out var m) ? m : PlayerMode.Embedded); break;
         }
@@ -301,6 +445,7 @@ internal sealed class PlayerController : IDisposable
         if (!_mp.IsSeekable) return;
         var target = Math.Clamp(ms, 0, Math.Max(0, _mp.Length - 500));
         _seekTarget = target;
+        Interlocked.Exchange(ref _quietUntil, Environment.TickCount64 + 5000);
         _seekClock.Restart();
         _mp.Time = target;
     }
@@ -358,14 +503,131 @@ internal sealed class PlayerController : IDisposable
         if (index < _index) _index--;
     }
 
+    private void EnableCaptions(CaptionSettings settings)
+    {
+        _captionSettings = settings;
+        _captions?.Dispose();
+        _captions = null;
+        if (Current is { } item) SyncCaptions(item, CurrentPlan, _mp.Time);
+    }
+
+    private void DisableCaptions()
+    {
+        _captionSettings = null;
+        _captions?.Dispose();
+        _captions = null;
+        ShowCaption(null);
+    }
+
+    private void SyncCaptions(QueueItem item, StreamPlan? plan, long startMs)
+    {
+        if (_captionSettings is null || _captionFactory is null) return;
+        if (_mp.Spu >= 0) _mp.SetSpu(-1);
+        var source = plan is not null ? plan.AudioUrl ?? plan.VideoUrl : item.Source;
+        if (_captions is { } existing && existing.Source == source && existing.Model == _captionSettings.Model && existing.Translate == _captionSettings.Translate) return;
+        _captions?.Dispose();
+        _captionsSaved = null;
+        ShowCaption(null);
+        var duration = plan?.Duration is { } d ? (long)(d * 1000) : _mp.Length;
+        _captions = _captionFactory(source, plan?.Headers, _captionSettings, startMs, plan?.Live == true ? 0 : duration);
+    }
+
+    private void UpdateCaptions()
+    {
+        if (_captions is null) return;
+        if (_mp.Spu >= 0) _mp.SetSpu(-1);
+        var time = _mp.Time;
+        _captions.Update(time, CurrentPlan?.Live == true ? 0 : _mp.Length);
+        ShowCaption(_mp.State is VLCState.Playing or VLCState.Paused ? _captions.TextAt(time) : null);
+        if (_captionsSaved is null && Current is { IsStream: false } item && _captions.Complete && _captions.Count > 0)
+        {
+            try { _captionsSaved = _captions.SaveSrt(item.Source); }
+            catch (IOException) { _captionsSaved = ""; }
+            catch (UnauthorizedAccessException) { _captionsSaved = ""; }
+        }
+    }
+
+    private void ShowCaption(string? text)
+    {
+        if (text == _shownCaption) return;
+        _shownCaption = text;
+        if (string.IsNullOrEmpty(text))
+        {
+            _mp.SetMarqueeString(VideoMarqueeOption.Text, " ");
+            return;
+        }
+        uint w = 0, h = 0;
+        try { _mp.Size(0, ref w, ref h); } catch (Exception) { }
+        var size = h > 0 ? Math.Clamp((int)(h / 17), 16, 72) : 28;
+        if (!_marquee)
+        {
+            _marquee = true;
+            _mp.SetMarqueeInt(VideoMarqueeOption.Position, 8);
+            _mp.SetMarqueeInt(VideoMarqueeOption.Color, 0xFFFFFF);
+            _mp.SetMarqueeInt(VideoMarqueeOption.Opacity, 255);
+            _mp.SetMarqueeInt(VideoMarqueeOption.Timeout, 0);
+            _mp.SetMarqueeInt(VideoMarqueeOption.Enable, 1);
+        }
+        if (size != _marqueeSize)
+        {
+            _marqueeSize = size;
+            _mp.SetMarqueeInt(VideoMarqueeOption.Size, size);
+            _mp.SetMarqueeInt(VideoMarqueeOption.Y, Math.Max(12, size));
+        }
+        _mp.SetMarqueeString(VideoMarqueeOption.Text, Wrap(text.Replace("$", "$$").Replace("%", "%%"), 46));
+    }
+
+    private static string Wrap(string text, int width)
+    {
+        if (text.Length <= width) return text;
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var lines = new List<string>();
+        var line = "";
+        foreach (var w in words)
+        {
+            if (line.Length > 0 && line.Length + 1 + w.Length > width) { lines.Add(line); line = w; }
+            else line = line.Length == 0 ? w : line + " " + w;
+        }
+        if (line.Length > 0) lines.Add(line);
+        return string.Join('\n', lines.TakeLast(3));
+    }
+
+    private void AdaptToStalls()
+    {
+        var now = Environment.TickCount64;
+        if (now - _stallWindow > 30_000) { _stallWindow = now; Interlocked.Exchange(ref _stalls, 0); }
+        if (_stalls < 2 || CurrentPlan is not { Adaptive: true } plan || Current is not { } item) return;
+        var lower = plan.Heights.Where(h => h < _streamHeight && h >= 240).DefaultIfEmpty(0).Max();
+        if (lower == 0) return;
+        _streamHeight = lower;
+        _notice = $"Lowered to {lower}p to keep playback smooth";
+        _noticeUntil = now + 6000;
+        StartMedia(item, Math.Max(0, _mp.Time));
+    }
+
+    private void ChangeQuality(int height)
+    {
+        _streamHeight = height <= 0 ? 0 : Math.Clamp(height, 144, 2160);
+        if (Current is not { } item || !NeedsResolve(item)) return;
+        var at = _mp.Time;
+        if (CurrentPlan is { Adaptive: true }) { StartMedia(item, at); return; }
+        _plans.Remove(item.Source);
+        Resolve(item, _index, at);
+    }
+
     public void Stop()
     {
+        _resolving?.Cancel();
+        _status = null;
         SaveResume();
         StopEngine();
     }
 
     public void Close()
     {
+        _captions?.Dispose();
+        _captions = null;
+        ShowCaption(null);
         Stop();
         _queue.Clear();
         _index = -1;
@@ -404,7 +666,7 @@ internal sealed class PlayerController : IDisposable
             SetError("Enter an http, https, rtsp or rtmp address.");
             return;
         }
-        Open([new QueueItem(u.ToString(), StreamTitle(u), null, true)], append);
+        Open([new QueueItem(u.ToString(), YtDlp.IsDirectMedia(u) ? StreamTitle(u) : u.Host.Replace("www.", ""), null, true)], append);
     }
 
     private void AddSubtitle(string path)
@@ -434,6 +696,7 @@ internal sealed class PlayerController : IDisposable
 
     public void Dispose()
     {
+        _captions?.Dispose();
         SaveResume();
         _timer.Dispose();
         StopEngine();

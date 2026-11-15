@@ -48,6 +48,16 @@ export function JobDetail({ jobId, fallback, onClose }: { jobId: number | null; 
             <span className="num text-[13px] text-muted">{bytes(job.receivedBytes)} / {bytes(job.totalBytes)}</span>
           </div>
           <Progress value={p} flowing={job.status === 'Running'} tone={job.status === 'Completed' ? 'ok' : 'accent'} />
+          {job.status !== 'Completed' && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-line bg-sunken/60 px-3 py-2 text-[12.5px]">
+              <span className="min-w-0 flex-1 text-muted">
+                {active ? 'Saving as ' : 'Will be saved as '}
+                <span className="font-medium break-all text-ink">{(job.extra?.file as string | undefined) ?? displayName(job)}</span>
+                <span> in </span><span className="break-all text-ink-2">{job.directory}</span>
+              </span>
+              {desktop.available() && <button type="button" onClick={() => jobActions.open(job, true)} className="flex shrink-0 items-center gap-1 text-[12px] font-medium text-accent hover:underline"><FolderOpen size={13} /> Folder</button>}
+            </div>
+          )}
         </div>
 
         <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4">

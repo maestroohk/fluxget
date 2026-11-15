@@ -38,6 +38,33 @@ export interface PlayerState {
   index: number
   queue: QueueEntry[]
   speeds: number[]
+  status: string | null
+  live: boolean
+  quality: number | null
+  adaptive: boolean
+  qualities: number[]
+  captions: LiveCaptionState | null
+  captionsAvailable: boolean
+}
+
+export interface LiveCaptionState { status: string; error: string | null; model: string; language: string; translate: boolean; count: number; ready: boolean; saved: string | null }
+
+const PREFS = 'fg-live-captions'
+export function captionPrefs(): { model: string; language: string; translate: boolean } {
+  try { return { model: 'base', language: 'auto', translate: false, ...JSON.parse(localStorage.getItem(PREFS) || '{}') } } catch { return { model: 'base', language: 'auto', translate: false } }
+}
+export function setCaptionPrefs(v: { model: string; language: string; translate: boolean }) {
+  try { localStorage.setItem(PREFS, JSON.stringify(v)) } catch { /* storage unavailable */ }
+}
+export const startLiveCaptions = (prefs = captionPrefs()) => player('liveCaptions', { on: true, ...prefs })
+export const stopLiveCaptions = () => player('liveCaptions', { on: false })
+export function captionLabel(c: LiveCaptionState | null): string {
+  if (!c) return ''
+  if (c.error) return c.error
+  if (c.status.startsWith('Downloading')) return c.status.replace('speech model', 'speech model (one time)')
+  if (c.status === 'Listening') return c.ready ? `Live · ${c.count} lines so far` : 'Listening… first lines in a few seconds'
+  if (c.status === 'Done') return c.saved ? 'Finished · saved next to the file' : `Finished · ${c.count} lines`
+  return c.status
 }
 
 let state: PlayerState | null = null
@@ -76,6 +103,7 @@ export const SHORTCUTS: [string, string][] = [
   ['N / P', 'Next or previous in the queue'],
   ['[ / ]', 'Slower or faster'],
   ['.', 'Next frame (pauses)'],
+  ['C', 'Live subtitles on or off'],
 ]
 
 export function handlePlayerKey(e: KeyboardEvent, p: PlayerState | null): boolean {
@@ -96,6 +124,7 @@ export function handlePlayerKey(e: KeyboardEvent, p: PlayerState | null): boolea
     case '[': player('rateStep', { value: -1 }); break
     case ']': player('rateStep', { value: 1 }); break
     case '.': player('frame'); break
+    case 'c': case 'C': if (p?.captions) stopLiveCaptions(); else startLiveCaptions(); break
     default: return false
   }
   e.preventDefault()

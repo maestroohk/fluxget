@@ -44,6 +44,9 @@ public sealed class Transcriber(EngineOptions options, ToolLocator tools)
 
     private string ModelsDirectory => Path.Combine(options.DataDirectory, "models");
     private string ModelPath(string id) => Path.Combine(ModelsDirectory, $"ggml-{id}.bin");
+    public string ModelFile(string id) => ModelPath(id);
+    public bool IsInstalled(string id) => File.Exists(ModelPath(id));
+    public static bool IsKnownModel(string id) => Models.Any(m => m.Id == id);
 
     public IReadOnlyList<WhisperModelInfo> ListModels() =>
         Models.Select(m => new WhisperModelInfo(m.Id, m.Label, m.Description, m.Size, File.Exists(ModelPath(m.Id)))).ToList();
@@ -113,7 +116,7 @@ public sealed class Transcriber(EngineOptions options, ToolLocator tools)
                 if (segments.Count == 0) throw new JobFailedException("No speech was found in this file.");
 
                 var lang = task.Translate ? "en" : task.Language != "auto" ? task.Language : task.DetectedLanguage ?? "und";
-                task.OutputPath = WriteSrt(task.MediaPath, lang, segments);
+                task.OutputPath = WriteSrt(task.MediaPath, lang, segments.Select(x => (x.Start, x.End, x.Text)));
                 task.Status = "done";
                 task.Progress = 1;
                 task.Detail = $"{segments.Count} subtitles";
@@ -190,7 +193,7 @@ public sealed class Transcriber(EngineOptions options, ToolLocator tools)
         }
     }
 
-    public static string WriteSrt(string mediaPath, string language, IEnumerable<SegmentData> segments)
+    public static string WriteSrt(string mediaPath, string language, IEnumerable<(TimeSpan Start, TimeSpan End, string Text)> segments, string? tag = null)
     {
         var sb = new StringBuilder();
         var i = 1;
@@ -204,8 +207,8 @@ public sealed class Transcriber(EngineOptions options, ToolLocator tools)
         }
         var dir = Path.GetDirectoryName(mediaPath)!;
         var stem = Path.GetFileNameWithoutExtension(mediaPath);
-        var path = Path.Combine(dir, $"{stem}.{language}.srt");
-        for (var n = 2; File.Exists(path); n++) path = Path.Combine(dir, $"{stem}.{language}.{n}.srt");
+        var path = Path.Combine(dir, tag is null ? $"{stem}.{language}.srt" : $"{stem}.{language}.{tag}.srt");
+        for (var n = 2; tag is null && File.Exists(path); n++) path = Path.Combine(dir, $"{stem}.{language}.{n}.srt");
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         return path;
     }

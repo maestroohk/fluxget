@@ -38,7 +38,7 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
-        _ = Task.Run(Protocol.Register);
+        if (SelfTest is null) _ = Task.Run(Protocol.Register);
 
         WebApplication server;
         Task started;

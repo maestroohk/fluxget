@@ -123,6 +123,11 @@ public static class Endpoints
             if (o.Mode == HostMode.Hosted || !OperatingSystem.IsWindows()) return Results.Problem("Not available in this mode.", statusCode: 400);
             var job = m.Find(id);
             var path = job?.FilePath;
+            if (reveal == true && (path is null || !File.Exists(path)) && job?.Directory is { } folder && Directory.Exists(folder))
+            {
+                Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { folder } });
+                return Results.NoContent();
+            }
             if (path is null || (!File.Exists(path) && !Directory.Exists(path))) return Results.NotFound();
             if (reveal == true) Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { "/select,", path } });
             else Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
@@ -136,6 +141,7 @@ public static class Endpoints
         });
 
         api.MapGet("/settings", (JobManager m) => m.Settings);
+        api.MapGet("/extension/config", (JobManager m) => new { detectMedia = m.Settings.BrowserMediaDetection });
         api.MapPut("/settings", (EngineSettings s, JobManager m, FluxGetHostOptions o) =>
         {
             if (o.Mode == HostMode.Hosted) s = s with { DownloadDirectory = m.Settings.DownloadDirectory };

@@ -217,6 +217,13 @@ internal sealed partial class MainForm : Form
             url = System.Web.HttpUtility.ParseQueryString(u.Query)["url"];
             if (u.Host.Equals("media", StringComparison.OrdinalIgnoreCase)) type = "media";
             if (u.Host.Equals("send", StringComparison.OrdinalIgnoreCase) && url is not null && IsMediaSite(url)) type = "media";
+            if (u.Host.Equals("play", StringComparison.OrdinalIgnoreCase) && url is not null && Uri.TryCreate(url, UriKind.Absolute, out var playUri) && playUri.Scheme is "http" or "https")
+            {
+                PostToUi(new { type = "navigate", page = "player" });
+                using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new { cmd = "openUrl", url = playUri.ToString() }));
+                Playback.Handle(doc.RootElement);
+                return;
+            }
         }
         else if (argument.StartsWith("http", StringComparison.OrdinalIgnoreCase) || argument.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
         {
@@ -285,7 +292,12 @@ internal sealed partial class MainForm : Form
         get
         {
             if (_player is not null) return _player;
-            _player = new Player.PlayerController(this, _server.Services.GetRequiredService<JobStore>());
+            var ytDlp = _server.Services.GetRequiredService<FluxGet.Engine.Media.YtDlp>();
+            var transcriber = _server.Services.GetRequiredService<FluxGet.Engine.Media.Transcriber>();
+            var tools = _server.Services.GetRequiredService<FluxGet.Engine.Media.ToolLocator>();
+            var work = Path.Combine(_server.Services.GetRequiredService<EngineOptions>().DataDirectory, "tmp");
+            _player = new Player.PlayerController(this, _server.Services.GetRequiredService<JobStore>(), ytDlp.ResolveStreamAsync,
+                (source, headers, s, start, duration) => new FluxGet.Engine.Media.LiveCaptions(transcriber, tools, work, source, headers, s.Model, s.Language, s.Translate, start, duration));
             var tokens = _server.Services.GetRequiredService<PreviewTokens>();
             _player.PreviewUrlFactory = id => Host.PlayerEndpoints.PreviewInfo(_manager.Find(id)!) is { Available: true }
                 ? $"{_origin}/preview/{id}?t={tokens.Issue(id)}" : null;

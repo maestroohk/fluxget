@@ -23,7 +23,7 @@ public sealed record MediaOptions
     public static readonly string[] Qualities = ["64", "96", "128", "160", "192", "256", "320"];
 }
 
-public sealed class MediaRunner(YtDlp ytDlp, GalleryDl gallery) : IJobRunner
+public sealed partial class MediaRunner(YtDlp ytDlp, GalleryDl gallery) : IJobRunner
 {
     public JobKind Kind => JobKind.Media;
 
@@ -87,7 +87,9 @@ public sealed class MediaRunner(YtDlp ytDlp, GalleryDl gallery) : IJobRunner
             var result = await ProcessRunner.RunAsync(ytDlp.Exe, args, line =>
             {
                 if (line.StartsWith("FGP ", StringComparison.Ordinal)) OnProgress(ctx, streams, line[4..]);
-                else if (line.StartsWith("FGFILE ", StringComparison.Ordinal)) final = line[7..].Trim();
+                else if (line.StartsWith("FGFILE ", StringComparison.Ordinal)) { final = line[7..].Trim(); SetOutput(job, final); }
+                else if (line.StartsWith("[download] Destination: ", StringComparison.Ordinal)) SetOutput(job, StreamSuffix().Replace(line[24..].Trim(), "$1"));
+                else if (line.StartsWith("[Merger] Merging formats into \"", StringComparison.Ordinal)) SetOutput(job, line[31..].Trim().TrimEnd('"'));
                 else if (line.StartsWith("[Merger]", StringComparison.Ordinal)) ctx.SetStatus(JobStatus.Running, "Merging video and audio");
                 else if (line.StartsWith("[ExtractAudio]", StringComparison.Ordinal)) ctx.SetStatus(JobStatus.Running, $"Converting to {o.AudioFormat.ToUpperInvariant()}");
                 else if (line.StartsWith("[EmbedThumbnail]", StringComparison.Ordinal) || line.StartsWith("[Metadata]", StringComparison.Ordinal)) ctx.SetStatus(JobStatus.Running, "Writing metadata");
@@ -107,6 +109,16 @@ public sealed class MediaRunner(YtDlp ytDlp, GalleryDl gallery) : IJobRunner
         Interlocked.Exchange(ref job.ReceivedBytes, size);
         ctx.Save();
     }
+
+    internal static void SetOutput(Job job, string path)
+    {
+        var name = Path.GetFileName(path);
+        if (name.Length == 0 || (job.Extra?.TryGetValue("file", out var current) == true && current as string == name)) return;
+        job.Extra = new Dictionary<string, object?>(job.Extra ?? new Dictionary<string, object?>()) { ["file"] = name };
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\.f[0-9a-zA-Z_-]+(\.[0-9a-zA-Z]+)$")]
+    internal static partial System.Text.RegularExpressions.Regex StreamSuffix();
 
     private static void OnProgress(JobContext ctx, Dictionary<string, (long Done, long? Total)> streams, string payload)
     {

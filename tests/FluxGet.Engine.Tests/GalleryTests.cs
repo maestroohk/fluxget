@@ -167,3 +167,17 @@ public sealed class GalleryTests
         return null;
     }
 }
+
+public sealed class MediaOutputNameTests
+{
+    [Theory]
+    [InlineData(@"C:\dl\Big Buck Bunny [1080p] [aqz].f299.mp4", "Big Buck Bunny [1080p] [aqz].mp4")]
+    [InlineData(@"C:\dl\Song [128k] [x1].f140-drc.m4a", "Song [128k] [x1].m4a")]
+    [InlineData(@"C:\dl\Clip [720p] [id].mkv", "Clip [720p] [id].mkv")]
+    public void Media_jobs_show_the_real_output_file_name(string destination, string expected)
+    {
+        var job = new Job { Url = "https://example.com/v", Directory = @"C:\dl" };
+        FluxGet.Engine.Media.MediaRunner.SetOutput(job, FluxGet.Engine.Media.MediaRunner.StreamSuffix().Replace(destination, "$1"));
+        Assert.Equal(expected, job.Extra?["file"]);
+    }
+}

@@ -20,8 +20,6 @@ async function init() {
   $('opt-capture').checked = s.captureDownloads
   $('opt-min').value = s.captureMinMb
   $('opt-cookies').checked = s.sendCookies
-  $('opt-detect').checked = s.detectMedia
-  $('opt-button').checked = s.videoButton
   $('opt-site').checked = s.siteButton !== false
   try {
     await call('GET', '/api/health')
@@ -214,18 +212,6 @@ $('opt-cookies').addEventListener('change', async e => {
   const ok = e.target.checked ? await chrome.permissions.request({ permissions: ['cookies'], origins: ['<all_urls>'] }) : true
   if (!ok) e.target.checked = false
   await save({ sendCookies: e.target.checked })
-})
-$('opt-detect').addEventListener('change', async e => {
-  const ok = e.target.checked ? await chrome.permissions.request({ permissions: ['webRequest'], origins: ['<all_urls>'] }) : true
-  if (!ok) e.target.checked = false
-  await save({ detectMedia: e.target.checked })
-  if (ok && e.target.checked) chrome.runtime.reload()
-})
-$('opt-button').addEventListener('change', async e => {
-  const ok = e.target.checked ? await chrome.permissions.request({ origins: ['<all_urls>'] }) : true
-  if (!ok) e.target.checked = false
-  await save({ videoButton: e.target.checked })
-  await chrome.runtime.sendMessage({ type: 'sync-content-script' })
 })
 
 void init()

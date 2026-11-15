@@ -34,11 +34,95 @@ internal sealed partial class MainForm
         async Task<bool> Playing() => await Until(() => mp.State == VLCState.Playing && mp.Time > 200, 15000);
         void Cmd(object o) => p.Handle(JsonDocument.Parse(JsonSerializer.Serialize(o)).RootElement);
 
+        var only = Environment.GetEnvironmentVariable("FLUXGET_SELFTEST_ONLY");
         try
         {
             PostToUi(new { type = "navigate", page = "player" });
             await Task.Delay(2500);
+            if (only != "stream") await CoreChecksAsync();
+            await StreamChecksAsync();
+            p.Close();
+        }
+        catch (Exception e)
+        {
+            Add("Self-test crashed", false, e.ToString());
+        }
 
+        metrics["startupToUiMs"] = Program.StartupMs;
+        var report = new { at = DateTime.UtcNow, passed = checks.Count(c => c.Pass), failed = checks.Count(c => !c.Pass), checks, metrics };
+        await File.WriteAllTextAsync(Path.Combine(outDir, "results.json"), JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+        _exiting = true;
+        Close();
+
+        async Task StreamChecksAsync()
+        {
+            p.Close();
+            await Task.Delay(1200);
+            Shot(this, Path.Combine(outDir, "00-empty-player.png"));
+            Open(S("speech-test.mp4"));
+            await Playing();
+            p.SeekTo(0);
+            var sw = Stopwatch.StartNew();
+            Cmd(new { cmd = "liveCaptions", on = true, model = "base", language = "auto", translate = false });
+            var shown = await Until(() => p.CaptionText is { Length: > 0 }, 90_000);
+            metrics["liveCaptionFirstLineMs"] = sw.ElapsedMilliseconds;
+            Add("Live subtitles appear on the video while it plays", shown, $"first line after {sw.ElapsedMilliseconds} ms: \"{p.CaptionText}\", status {p.Captions?.Status} {p.Captions?.Error} {p.Captions?.Detail}");
+            await Task.Delay(600);
+            Shot(this, Path.Combine(outDir, "12-live-subtitles.png"));
+            await _web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[aria-label^=\"Subtitles\"]').click()");
+            await Task.Delay(800);
+            Shot(this, Path.Combine(outDir, "12b-subtitle-menu.png"));
+            await _web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[aria-label^=\"Subtitles\"]').click()");
+            p.SeekTo(9000);
+            var afterSeek = await Until(() => p.CaptionText is { Length: > 0 } && mp.Time > 9000, 30_000);
+            Add("Live subtitles follow a seek", afterSeek, $"\"{p.CaptionText}\" at {mp.Time} ms");
+            Cmd(new { cmd = "liveCaptions", on = false });
+            Add("Live subtitles turn off", await Until(() => p.Captions is null && p.CaptionText is null, 3000));
+
+            var url = Environment.GetEnvironmentVariable("FLUXGET_SELFTEST_STREAM") ?? "https://www.youtube.com/watch?v=aqz-KE-bpKQ";
+            var stalls = 0;
+            var playingSeen = false;
+            mp.Buffering += (_, e) => { if (playingSeen && e.Cache < 100) stalls++; };
+            sw.Restart();
+            Cmd(new { cmd = "openUrl", url });
+            var streaming = await Until(() => mp.State == VLCState.Playing && mp.Time > 500, 60_000);
+            playingSeen = streaming;
+            metrics["streamStartMs"] = sw.ElapsedMilliseconds;
+            metrics["streamResolveMs"] = p.LastResolveMs;
+            Add("YouTube link streams without downloading", streaming && mp.VideoTrackCount > 0,
+                $"{sw.ElapsedMilliseconds} ms to playing, length {mp.Length / 1000} s, title \"{p.Current?.Title}\", audio tracks {mp.AudioTrackCount}");
+            await Task.Delay(3000);
+            Shot(this, Path.Combine(outDir, "13-stream.png"));
+            Add("Streamed video renders", NotBlack(Path.Combine(outDir, "13-stream.png"), p.View.Bounds));
+            Add("Streamed video has sound", mp.AudioTrackCount > 0 && mp.AudioTrack >= 0, $"audio tracks {mp.AudioTrackCount}");
+
+            sw.Restart();
+            p.SeekTo(400_000);
+            var sought = await Until(() => mp.State == VLCState.Playing && mp.Time > 400_500, 20_000);
+            metrics["streamSeekMs"] = sw.ElapsedMilliseconds;
+            Add("Seeking far into a stream", sought, $"{sw.ElapsedMilliseconds} ms to resume at {mp.Time / 1000} s");
+            var t0 = mp.Time;
+            stalls = 0;
+            await Task.Delay(15_000);
+            var advanced = mp.Time - t0;
+            uint aw = 0, ah = 0;
+            mp.Size(0, ref aw, ref ah);
+            metrics["streamStalls15s"] = stalls;
+            metrics["streamAutoHeightAfter20s"] = ah;
+            Add("Stream plays 15 s at full quality without rebuffering", stalls == 0 && advanced > 13_500 && ah >= 720, $"stalls {stalls}, advanced {advanced} ms, quality {aw}x{ah}");
+
+            var before = mp.Time;
+            Cmd(new { cmd = "quality", value = 720 });
+            var switched = await Until(() => mp.State == VLCState.Playing && Math.Abs(mp.Time - before) < 20_000 && mp.Time > 1000, 40_000);
+            uint w = 0, h = 0;
+            mp.Size(0, ref w, ref h);
+            await Task.Delay(6000);
+            mp.Size(0, ref w, ref h);
+            Add("Choosing 720p keeps the position and plays 720p", switched && h == 720, $"now {w}x{h} at {mp.Time / 1000} s (was {before / 1000} s)");
+        }
+
+        async Task CoreChecksAsync()
+        {
             Open(S("bbb-720p-long.mp4"));
             Add("MP4 (H.264/AAC 720p60) plays", await Playing(), $"open→playing {p.LastOpenMs} ms");
             metrics["openMs_mp4_720p"] = p.LastOpenMs;
@@ -280,18 +364,7 @@ internal sealed partial class MainForm
                 Add("Video renders at the end of the session", NotBlack(Path.Combine(outDir, "11-generated-subtitles.png"), p.View.Bounds));
                 File.Copy(task.OutputPath, Path.Combine(outDir, "generated.srt"), true);
             }
-            p.Close();
         }
-        catch (Exception e)
-        {
-            Add("Self-test crashed", false, e.ToString());
-        }
-
-        metrics["startupToUiMs"] = Program.StartupMs;
-        var report = new { at = DateTime.UtcNow, passed = checks.Count(c => c.Pass), failed = checks.Count(c => !c.Pass), checks, metrics };
-        await File.WriteAllTextAsync(Path.Combine(outDir, "results.json"), JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
-        _exiting = true;
-        Close();
     }
 
     private static void Shot(Control c, string path)
