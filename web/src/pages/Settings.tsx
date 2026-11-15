@@ -3,7 +3,8 @@ import { FolderOpen, Monitor, Moon, Puzzle, Sun, Trash2 } from 'lucide-react'
 import { api, desktop, type Settings, type SystemInfo } from '../api'
 import { setSettings, setUpdate, useStore } from '../store'
 import { ago, limitText, parseLimit } from '../format'
-import { Button, Card, Field, IconButton, inputClass, Segmented, Toggle } from '../ui'
+import { Button, Card, cx, Field, IconButton, inputClass, Segmented, Toggle } from '../ui'
+import { Mark } from '../components/Logo'
 import { attempt } from '../components/toast'
 import { BrowserSetup } from '../components/BrowserSetup'
 
@@ -109,13 +110,30 @@ export function SettingsPage() {
         </Group>
 
         <Group title="About">
-          <dl className="grid grid-cols-[140px_1fr] gap-y-2 text-[13px]">
-            <dt className="text-muted">Version</dt><dd className="flex flex-wrap items-center gap-3">{system?.version}{desktop.available() && <UpdateCheck />}</dd>
-            <dt className="text-muted">Mode</dt><dd>{system?.mode}</dd>
-            <dt className="text-muted">yt-dlp</dt><dd className="break-all">{system?.tools?.ytDlp ?? <span className="text-warn">not found — media downloads unavailable</span>}</dd>
-            <dt className="text-muted">FFmpeg</dt><dd className="break-all">{system?.tools?.ffmpeg ?? <span className="text-warn">not found — merging and conversion unavailable</span>}</dd>
-            <dt className="text-muted">JS runtime</dt><dd className="break-all">{system?.tools?.jsRuntime ?? <span className="text-warn">not found — YouTube extraction may fail</span>}</dd>
-          </dl>
+          <div className="flex items-start gap-4">
+            <Mark size={44} />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-[17px] font-semibold tracking-tight">FluxGet</span>
+                <span className="num text-[13px] text-muted">version {system?.version}</span>
+                <span className="text-[12px] text-faint">· {system?.mode === 'Desktop' ? 'Windows app' : system?.mode === 'Hosted' ? 'Server (web)' : system?.mode}</span>
+              </div>
+              <p className="mt-1 text-[13px] text-muted">Download manager and media player: fast resumable downloads, video and audio from thousands of sites, photos, torrents, streaming, and subtitles made on your own computer. Free and open source (MIT).</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {desktop.available() && <UpdateCheck />}
+                <a className="text-[12.5px] font-medium text-accent hover:underline" href="https://github.com/maestroohk/fluxget" target="_blank" rel="noreferrer">Project page</a>
+                <a className="text-[12.5px] font-medium text-accent hover:underline" href="https://github.com/maestroohk/fluxget/releases" target="_blank" rel="noreferrer">What's new</a>
+                <a className="text-[12.5px] font-medium text-accent hover:underline" href="https://github.com/maestroohk/fluxget/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noreferrer">Open-source components</a>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5 border-t border-line pt-3">
+            {([['Video sites', system?.tools?.ytDlp], ['Photos', system?.tools?.galleryDl], ['Conversion', system?.tools?.ffmpeg], ['YouTube support', system?.tools?.jsRuntime]] as const).map(([label, ok]) => (
+              <span key={label} title={ok ?? 'Missing'} className={cx('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px]', ok ? 'border-line text-muted' : 'border-warn/40 text-warn')}>
+                <span className={cx('size-1.5 rounded-full', ok ? 'bg-ok' : 'bg-warn')} />{label}{ok ? '' : ' unavailable'}
+              </span>
+            ))}
+          </div>
         </Group>
       </div>
       {dirty && (

@@ -28,9 +28,16 @@ internal sealed partial class MainForm
             while (sw.ElapsedMilliseconds < ms) { if (cond()) return true; await Task.Delay(100); }
             return cond();
         }
+        var initClock = Stopwatch.StartNew();
         var p = Playback;
+        metrics["playerInitMs"] = initClock.ElapsedMilliseconds;
         var mp = p.Engine;
-        void Open(params string[] files) => p.Open(files.Select(f => new QueueItem(f, Path.GetFileNameWithoutExtension(f), null, false)));
+        void Open(params string[] files)
+        {
+            var block = Stopwatch.StartNew();
+            p.Open(files.Select(f => new QueueItem(f, Path.GetFileNameWithoutExtension(f), null, false)));
+            metrics[$"uiBlockedOpenMs_{Path.GetFileName(files[0])}"] = block.ElapsedMilliseconds;
+        }
         async Task<bool> Playing() => await Until(() => mp.State == VLCState.Playing && mp.Time > 200, 15000);
         void Cmd(object o) => p.Handle(JsonDocument.Parse(JsonSerializer.Serialize(o)).RootElement);
 
@@ -39,8 +46,13 @@ internal sealed partial class MainForm
         {
             PostToUi(new { type = "navigate", page = "player" });
             await Task.Delay(2500);
-            if (only != "stream") await CoreChecksAsync();
-            await StreamChecksAsync();
+            if (only == "hevc") await HevcChecksAsync();
+            else
+            {
+                if (only != "stream") await CoreChecksAsync();
+                if (only != "stream") await HevcChecksAsync();
+                await StreamChecksAsync();
+            }
             p.Close();
         }
         catch (Exception e)
@@ -53,6 +65,49 @@ internal sealed partial class MainForm
         await File.WriteAllTextAsync(Path.Combine(outDir, "results.json"), JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
         _exiting = true;
         Close();
+
+        async Task HevcChecksAsync()
+        {
+            var file = S("hevc10-1080p.mkv");
+            if (!File.Exists(file)) { Add("HEVC 10-bit sample present", false, file); return; }
+            Open(file);
+            Add("HEVC 10-bit 1080p plays", await Playing(), $"open {p.LastOpenMs} ms");
+            var green = new List<string>();
+            async Task Snap(string name)
+            {
+                await Task.Delay(1500);
+                var path = Path.Combine(outDir, $"hevc-{name}.png");
+                if (p.Mode == PlayerMode.Embedded) Shot(this, path);
+                else ShotScreen(p.View.RectangleToScreen(p.View.ClientRectangle), path);
+                if (MostlyGreen(path, p.Mode == PlayerMode.Embedded ? p.View.Bounds : null)) green.Add(name);
+            }
+            await Snap("start");
+            foreach (var t in new[] { 60_000, 150_000, 30_000, 200_000 }) { p.SeekTo(t); await Snap($"seek{t / 1000}"); }
+            SetPlayerMode(PlayerMode.Fullscreen); await Snap("fullscreen");
+            p.SeekTo(90_000); await Snap("fullscreen-seek");
+            SetPlayerMode(PlayerMode.Embedded); await Snap("back");
+            SetPlayerMode(PlayerMode.Mini); await Snap("mini");
+            SetPlayerMode(PlayerMode.Embedded); await Snap("back2");
+            Cmd(new { cmd = "hardwareDecoding", value = true });
+            await Snap("reopen");
+            Add("No green frames on HEVC 10-bit after seeks and mode switches", green.Count == 0, green.Count == 0 ? "" : "green at: " + string.Join(", ", green));
+            await _web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[aria-label=\"More\"]').click()");
+            await Task.Delay(900);
+            Shot(this, Path.Combine(outDir, "hevc-more-menu.png"));
+            Add("Menu opens over a still frame instead of shrinking the video", !p.View.Visible && NotBlack(Path.Combine(outDir, "hevc-more-menu.png"), p.View.Bounds), $"video window visible {p.View.Visible}");
+            await _web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[aria-label=\"More\"]').click()");
+            await Task.Delay(900);
+            Add("Video comes back when the menu closes", p.View.Visible);
+            await _web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[aria-label=\"Keyboard shortcuts\"]').click()");
+            await Task.Delay(900);
+            Shot(this, Path.Combine(outDir, "hevc-dialog.png"));
+            var toggles = 0;
+            p.View.VisibleChanged += (_, _) => toggles++;
+            await Task.Delay(3000);
+            Add("A dialog over the video does not flicker", toggles == 0 && NotBlack(Path.Combine(outDir, "hevc-dialog.png"), p.View.Bounds), $"video window toggled {toggles} times in 3 s");
+            await _web.CoreWebView2.ExecuteScriptAsync("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
+            await Task.Delay(800);
+        }
 
         async Task StreamChecksAsync()
         {
@@ -377,6 +432,22 @@ internal sealed partial class MainForm
             g.ReleaseHdc(dc);
         }
         bmp.Save(path);
+    }
+
+    private static bool MostlyGreen(string path, Rectangle? area = null)
+    {
+        using var bmp = new Bitmap(path);
+        var r = area ?? new Rectangle(0, 0, bmp.Width, bmp.Height);
+        int green = 0, total = 0;
+        for (var x = r.Left + r.Width / 8; x < r.Right - r.Width / 8; x += Math.Max(1, r.Width / 40))
+        for (var y = r.Top + r.Height / 8; y < r.Bottom - r.Height / 8; y += Math.Max(1, r.Height / 30))
+        {
+            if (x >= bmp.Width || y >= bmp.Height) continue;
+            var c = bmp.GetPixel(x, y);
+            total++;
+            if (c.G > 40 && c.G > c.R * 2 && c.G > c.B * 2) green++;
+        }
+        return total > 0 && green > total * 0.6;
     }
 
     private static bool NotBlack(string path, Rectangle? area = null)

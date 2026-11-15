@@ -51,6 +51,8 @@ else {
 vpk pack --packId FluxGet --packVersion $Version --packDir $publish --mainExe FluxGet.exe --packTitle FluxGet --icon src/FluxGet.Desktop/fluxget.ico --splashImage src/FluxGet.Desktop/installer-splash.png --packAuthors FluxGet --outputDir $releases @signArgs
 if ($LASTEXITCODE -ne 0) { throw "vpk pack failed with exit code $LASTEXITCODE" }
 
+& (Join-Path $PSScriptRoot 'build-setup.ps1') -Version $Version -Releases $releases
+
 $extensionZip = Join-Path $releases "FluxGet-extension-$Version.zip"
 Remove-Item $extensionZip -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $root 'extension/*') -DestinationPath $extensionZip

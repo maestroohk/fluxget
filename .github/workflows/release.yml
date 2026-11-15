@@ -108,6 +108,10 @@ jobs:
         shell: pwsh
         run: Copy-Item artifacts/signed-setup/FluxGet-win-Setup.exe artifacts/releases/FluxGet-win-Setup.exe -Force
 
+      - name: Setup wizard
+        shell: pwsh
+        run: ./scripts/build-setup.ps1 -Version ${{ steps.v.outputs.version }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: fluxget-${{ steps.v.outputs.version }}

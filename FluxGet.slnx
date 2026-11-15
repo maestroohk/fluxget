@@ -6,6 +6,7 @@
     <Project Path="src/FluxGet.Desktop/FluxGet.Desktop.csproj" />
     <Project Path="src/FluxGet.Engine/FluxGet.Engine.csproj" />
     <Project Path="src/FluxGet.Host/FluxGet.Host.csproj" />
+    <Project Path="src/FluxGet.Setup/FluxGet.Setup.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FluxGet.Engine.Tests/FluxGet.Engine.Tests.csproj" />

@@ -17,7 +17,7 @@ import { Scheduler } from './pages/Scheduler'
 import { Completed } from './pages/Completed'
 import { SettingsPage } from './pages/Settings'
 import { PlayerPage } from './pages/Player'
-import { player, setPlayerState } from './player'
+import { player, setPlayerFrame, setPlayerState } from './player'
 
 const NAV: { page: Page; label: string; icon: ReactNode }[] = [
   { page: 'overview', label: 'Overview', icon: <LayoutGrid size={17} /> },
@@ -82,6 +82,7 @@ export function App() {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'update') { setUpdate(e.data); return }
       if (e.data?.type === 'playerState') { setPlayerState(e.data.state); return }
+      if (e.data?.type === 'playerFrame') { setPlayerFrame(e.data.url ?? null); return }
       if (e.data?.type === 'navigate' && typeof e.data.page === 'string') { navigate(e.data.page); return }
       if (typeof e.data?.url !== 'string') return
       if (e.data.type === 'add') openAdd(e.data.url)

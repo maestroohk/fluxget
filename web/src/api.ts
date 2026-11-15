@@ -57,7 +57,7 @@ export interface SystemInfo {
   freeBytes: number | null
   completedCount: number
   completedBytes: number
-  tools: { ytDlp: string | null; ffmpeg: string | null; ffprobe: string | null; jsRuntime: string | null } | null
+  tools: { ytDlp: string | null; galleryDl?: string | null; ffmpeg: string | null; ffprobe: string | null; jsRuntime: string | null } | null
 }
 
 export interface AddResult {

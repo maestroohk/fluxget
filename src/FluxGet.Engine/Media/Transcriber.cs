@@ -45,6 +45,13 @@ public sealed class Transcriber(EngineOptions options, ToolLocator tools)
     private string ModelsDirectory => Path.Combine(options.DataDirectory, "models");
     private string ModelPath(string id) => Path.Combine(ModelsDirectory, $"ggml-{id}.bin");
     public string ModelFile(string id) => ModelPath(id);
+
+    public static void UseGpu(bool gpu) =>
+        Whisper.net.LibraryLoader.RuntimeOptions.RuntimeLibraryOrder = gpu
+            ? [Whisper.net.LibraryLoader.RuntimeLibrary.Vulkan, Whisper.net.LibraryLoader.RuntimeLibrary.Cpu]
+            : [Whisper.net.LibraryLoader.RuntimeLibrary.Cpu];
+
+    public static string? LoadedRuntime => Whisper.net.LibraryLoader.RuntimeOptions.LoadedLibrary?.ToString();
     public bool IsInstalled(string id) => File.Exists(ModelPath(id));
     public static bool IsKnownModel(string id) => Models.Any(m => m.Id == id);
 

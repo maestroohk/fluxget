@@ -297,7 +297,7 @@ internal sealed partial class MainForm : Form
             var tools = _server.Services.GetRequiredService<FluxGet.Engine.Media.ToolLocator>();
             var work = Path.Combine(_server.Services.GetRequiredService<EngineOptions>().DataDirectory, "tmp");
             _player = new Player.PlayerController(this, _server.Services.GetRequiredService<JobStore>(), ytDlp.ResolveStreamAsync,
-                (source, headers, s, start, duration) => new FluxGet.Engine.Media.LiveCaptions(transcriber, tools, work, source, headers, s.Model, s.Language, s.Translate, start, duration));
+                (source, headers, s, start, duration, whole) => new FluxGet.Engine.Media.LiveCaptions(transcriber, tools, work, source, headers, s.Model, s.Language, s.Translate, start, duration, whole, s.Speed));
             var tokens = _server.Services.GetRequiredService<PreviewTokens>();
             _player.PreviewUrlFactory = id => Host.PlayerEndpoints.PreviewInfo(_manager.Find(id)!) is { Available: true }
                 ? $"{_origin}/preview/{id}?t={tokens.Issue(id)}" : null;
@@ -349,8 +349,19 @@ internal sealed partial class MainForm : Form
                 Playback.Push();
                 return;
             case "obscured":
-                _surfaceObscured = msg.TryGetProperty("value", out var o) && o.GetBoolean();
-                ApplySurface();
+                var obscure = msg.TryGetProperty("value", out var o) && o.GetBoolean();
+                if (obscure == _surfaceObscured) return;
+                _surfaceObscured = obscure;
+                if (obscure && _player?.View is { Visible: true } shown)
+                {
+                    PostFrame(shown);
+                    BeginInvoke(async () => { await Task.Delay(80); ApplySurface(); });
+                }
+                else
+                {
+                    ApplySurface();
+                    if (!obscure) BeginInvoke(async () => { await Task.Delay(120); PostToUi(new { type = "playerFrame", url = (string?)null }); });
+                }
                 return;
             case "openDialog":
                 using (var dialog = new OpenFileDialog
@@ -380,6 +391,26 @@ internal sealed partial class MainForm : Form
                 return;
         }
         Playback.Handle(msg);
+    }
+
+    private void PostFrame(Control view)
+    {
+        try
+        {
+            var r = view.RectangleToScreen(view.ClientRectangle);
+            if (r.Width < 2 || r.Height < 2) return;
+            using var shot = new Bitmap(r.Width, r.Height);
+            using (var g = Graphics.FromImage(shot)) g.CopyFromScreen(r.Location, Point.Empty, r.Size);
+            var scale = Math.Min(1.0, 1280.0 / r.Width);
+            using var small = new Bitmap(shot, Math.Max(1, (int)(r.Width * scale)), Math.Max(1, (int)(r.Height * scale)));
+            using var ms = new MemoryStream();
+            var jpeg = System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders().First(e => e.FormatID == System.Drawing.Imaging.ImageFormat.Jpeg.Guid);
+            using var quality = new System.Drawing.Imaging.EncoderParameters(1);
+            quality.Param[0] = new System.Drawing.Imaging.EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 80L);
+            small.Save(ms, jpeg, quality);
+            PostToUi(new { type = "playerFrame", url = "data:image/jpeg;base64," + Convert.ToBase64String(ms.ToArray()) });
+        }
+        catch (Exception) { }
     }
 
     private void ApplySurface()

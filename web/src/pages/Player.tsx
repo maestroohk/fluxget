@@ -2,9 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { AlertTriangle, Disc3, FileVideo, FolderOpen, Keyboard, Library, Link2, ListVideo, Loader2, Music, Play, RotateCcw, RotateCw, Search, SlidersHorizontal, Sparkles, Trash2, X } from 'lucide-react'
 import { api, desktop } from '../api'
 import { ago, bytes } from '../format'
-import { captionLabel, captionPrefs, clock, handlePlayerKey, player, setCaptionPrefs, SHORTCUTS, startLiveCaptions, stopLiveCaptions, usePlayer, type PlayerState } from '../player'
+import { captionLabel, captionPrefs, clock, handlePlayerKey, player, setCaptionPrefs, SHORTCUTS, startLiveCaptions, stopLiveCaptions, usePlayer, usePlayerFrame, type PlayerState } from '../player'
 import { PlayerControls } from '../components/PlayerControls'
-import { SubtitleGenerator } from '../components/SubtitleGenerator'
 import { attempt } from '../components/toast'
 import { Button, cx, inputClass, Modal, Segmented, Toggle } from '../ui'
 
@@ -14,6 +13,7 @@ type Tab = 'queue' | 'library' | 'playback'
 
 export function PlayerPage() {
   const p = usePlayer()
+  const frame = usePlayerFrame()
   const [tab, setTab] = useState<Tab>('library')
   const [shortcuts, setShortcuts] = useState(false)
   const [url, setUrl] = useState('')
@@ -58,6 +58,7 @@ export function PlayerPage() {
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#08090b]">
         <div ref={stage} className="relative min-h-0 flex-1" onDoubleClick={() => loaded && p?.hasVideo && player('mode', { value: 'fullscreen' })}>
+          {frame && showVideo && <img src={frame} alt="" className="pointer-events-none absolute inset-0 size-full object-fill" />}
           {!loaded && <EmptyStage url={url} setUrl={setUrl} />}
           {loaded && p?.state === 'error' && <ErrorStage p={p} />}
           {loaded && p?.state !== 'error' && !p?.hasVideo && (p?.state === 'opening' || p?.state === 'buffering' ? <OpeningStage p={p!} /> : <AudioStage p={p!} />)}
@@ -282,22 +283,13 @@ function PlaybackTab({ p }: { p: PlayerState | null }) {
   )
   return (
     <div className="space-y-5 p-4 text-[13px]">
-      <Section title="Speed">
-        <div className="flex flex-wrap gap-1">
-          {p.speeds.map(s => <Chip key={s} active={Math.abs(p.rate - s) < 0.01} onClick={() => player('rate', { value: s })}>{s}×</Chip>)}
-        </div>
-        <input type="range" min={0.25} max={4} step={0.05} value={p.rate} onChange={e => player('rate', { value: Number(e.target.value) })} className="fg-range mt-2 w-full" aria-label="Fine speed" />
-      </Section>
       <Section title="Subtitles">
         <select className={inputClass + ' h-8 text-[12.5px]'} value={p.subtitleTrack} onChange={e => player('subtitleTrack', { id: Number(e.target.value) })} aria-label="Subtitle track">
           <option value={-1}>Off</option>
           {p.subtitleTracks.filter(t => t.id >= 0).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={() => player('subtitleDialog')}>Add subtitle file…</Button>
-          {!p.isStream && p.source && <SubtitleGenerator mediaPath={p.source} />}
-        </div>
-        <p className="text-[11.5px] text-muted">SRT, ASS, SSA and VTT files work. You can also drop a subtitle file onto the player.</p>
+        <Button size="sm" className="mt-2" onClick={() => player('subtitleDialog')}>Add subtitle file…</Button>
+        <p className="text-[11.5px] text-muted">SRT, ASS, SSA or VTT — or drop the file onto the video.</p>
         {p.captionsAvailable && <LiveCaptionsPanel p={p} />}
         {delay('Subtitle delay', 'subtitleDelay', p.subtitleDelayMs)}
         <Row label="Subtitle size">
@@ -312,8 +304,18 @@ function PlaybackTab({ p }: { p: PlayerState | null }) {
         </select>
         {delay('Audio sync', 'audioDelay', p.audioDelayMs)}
       </Section>
+      <Section title="Speed">
+        <div className="flex flex-wrap gap-1">
+          {p.speeds.map(s => <Chip key={s} active={Math.abs(p.rate - s) < 0.01} onClick={() => player('rate', { value: s })}>{s}×</Chip>)}
+        </div>
+        <input type="range" min={0.25} max={4} step={0.05} value={p.rate} onChange={e => player('rate', { value: Number(e.target.value) })} className="fg-range mt-2 w-full" aria-label="Fine speed" />
+      </Section>
       {p.hasVideo && (
-        <Section title="Picture">
+        <details className="group rounded-xl border border-line">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-[11px] font-semibold tracking-[0.08em] text-muted uppercase select-none">
+            Picture and decoding <span className="text-[14px] transition group-open:rotate-90">›</span>
+          </summary>
+          <div className="space-y-3 border-t border-line p-3">
           <Row label="Aspect ratio"><Select value={p.aspect ?? ''} onChange={v => player('aspect', { value: v })} options={[['', 'Original'], ['16:9', '16:9'], ['4:3', '4:3'], ['21:9', '21:9'], ['1:1', '1:1']]} /></Row>
           <Row label="Crop"><Select value={p.crop ?? ''} onChange={v => player('crop', { value: v })} options={[['', 'None'], ['16:9', '16:9'], ['4:3', '4:3'], ['2.35:1', '2.35:1'], ['1:1', '1:1']]} /></Row>
           <Row label="Zoom"><Select value={String(p.zoom)} onChange={v => player('zoom', { value: Number(v) })} options={[['0', 'Fit'], ['0.5', '50%'], ['1', '100%'], ['1.5', '150%'], ['2', '200%']]} /></Row>
@@ -332,7 +334,8 @@ function PlaybackTab({ p }: { p: PlayerState | null }) {
           <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={() => player('adjust', { name: 'reset' })}>Reset picture</Button></div>
           <Row label="Hardware decoding"><Toggle label="Hardware decoding" checked={p.hardwareDecoding} onChange={v => player('hardwareDecoding', { value: v })} /></Row>
           <Button size="sm" variant="ghost" onClick={() => player('frame')}>Step one frame (.)</Button>
-        </Section>
+          </div>
+        </details>
       )}
     </div>
   )
@@ -355,10 +358,11 @@ function LiveCaptionsPanel({ p }: { p: PlayerState }) {
   return (
     <div className="mt-3 rounded-xl border border-line bg-sunken/50 p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 font-medium"><Sparkles size={14} className="text-accent" /> Live subtitles</div>
-        <Toggle label="Live subtitles" checked={on} onChange={v => (v ? startLiveCaptions(prefs) : stopLiveCaptions())} />
+        <div className="flex items-center gap-2 font-medium"><Sparkles size={14} className="text-accent" /> Generate subtitles</div>
+        <Toggle label="Generate subtitles" checked={on} onChange={v => (v ? startLiveCaptions(prefs) : stopLiveCaptions())} />
       </div>
-      <p className="mt-1 text-[11.5px] text-muted">{on ? captionLabel(p.captions) : 'Generated on this computer a little ahead of what you are watching, for files and streams. Nothing is uploaded. Press C to switch on or off.'}</p>
+      <p className="mt-1 text-[11.5px] text-muted">{on ? captionLabel(p.captions) : 'Lines appear within seconds where you are watching; for files the rest is finished in the background and saved. Runs on this computer, nothing is uploaded. Shortcut: C.'}</p>
+      {on && p.captions?.whole && p.captions.status === 'Listening' && <div className="mt-2 h-1 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-accent transition-[width] duration-500" style={{ width: `${Math.round(p.captions.progress * 100)}%` }} /></div>}
       <div className="mt-2 grid grid-cols-2 gap-2">
         <select className={inputClass + ' h-8 text-[12px]'} value={prefs.model} onChange={e => update({ model: e.target.value })} aria-label="Speech model">
           <option value="tiny">Fastest (Tiny, 75 MB)</option>
@@ -369,7 +373,13 @@ function LiveCaptionsPanel({ p }: { p: PlayerState }) {
           {CAPTION_LANGUAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </div>
+      <select className={inputClass + ' mt-2 h-8 text-[12px]'} value={prefs.speed} onChange={e => update({ speed: e.target.value as typeof prefs.speed })} aria-label="Speed">
+        <option value="quiet">Cool and quiet (uses fewer cores)</option>
+        <option value="balanced">Balanced</option>
+        <option value="fast">Fastest (uses most cores, laptop fans may spin up)</option>
+      </select>
       <label className="mt-2 flex items-center gap-2 text-[12px] text-ink-2"><Toggle label="Translate to English" checked={prefs.translate} onChange={v => update({ translate: v })} /> Translate to English</label>
+      <p className="mt-2 text-[11px] text-faint">The speech model downloads once (75–466 MB) and stays on this computer.</p>
     </div>
   )
 }

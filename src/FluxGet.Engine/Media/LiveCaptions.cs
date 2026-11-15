@@ -5,6 +5,8 @@ namespace FluxGet.Engine.Media;
 
 public sealed record Caption(long StartMs, long EndMs, string Text);
 
+public enum CaptionSpeed { Quiet, Balanced, Fast }
+
 public sealed class LiveCaptions : IDisposable
 {
     public const int ChunkMs = 20_000;
@@ -17,18 +19,20 @@ public sealed class LiveCaptions : IDisposable
     private readonly IReadOnlyDictionary<string, string>? _headers;
     private readonly string _model;
     private readonly bool _translate;
+    private readonly bool _whole;
+    private readonly CaptionSpeed _speed;
     private readonly CancellationTokenSource _stop = new();
+    private readonly TaskCompletionSource _languageKnown = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _gate = new();
     private readonly List<Caption> _captions = [];
     private readonly HashSet<int> _done = [];
+    private readonly HashSet<int> _busy = [];
     private string _language;
     private long _position;
     private long _durationMs;
-    private int _working = -1;
-    private CancellationTokenSource? _chunk;
 
     public LiveCaptions(Transcriber transcriber, ToolLocator tools, string workDir, string source, IReadOnlyDictionary<string, string>? headers,
-        string model, string language, bool translate, long startMs, long durationMs)
+        string model, string language, bool translate, long startMs, long durationMs, bool whole = false, CaptionSpeed speed = CaptionSpeed.Balanced)
     {
         _transcriber = transcriber;
         _tools = tools;
@@ -40,6 +44,9 @@ public sealed class LiveCaptions : IDisposable
         _translate = translate;
         _position = startMs;
         _durationMs = durationMs;
+        _whole = whole && durationMs > 0;
+        _speed = speed;
+        if (language != "auto") _languageKnown.TrySetResult();
         Status = "Starting";
         _ = Task.Run(RunAsync);
     }
@@ -50,16 +57,36 @@ public sealed class LiveCaptions : IDisposable
     public string Model => _model;
     public string Language => _language;
     public bool Translate => _translate;
+    public bool Whole => _whole;
+    public CaptionSpeed Speed => _speed;
     public string Source => _source;
     public int Count { get { lock (_gate) return _captions.Count; } }
+
+    private int TotalChunks
+    {
+        get
+        {
+            var total = Interlocked.Read(ref _durationMs);
+            return total <= 0 ? 0 : (int)((total + ChunkMs - 1) / ChunkMs);
+        }
+    }
+
+    public double Progress
+    {
+        get
+        {
+            var chunks = TotalChunks;
+            if (chunks == 0) return 0;
+            lock (_gate) return Math.Min(1, _done.Count / (double)chunks);
+        }
+    }
 
     public bool Complete
     {
         get
         {
-            var total = Interlocked.Read(ref _durationMs);
-            if (total <= 0) return false;
-            var chunks = (int)((total + ChunkMs - 1) / ChunkMs);
+            var chunks = TotalChunks;
+            if (chunks == 0) return false;
             lock (_gate) return Enumerable.Range(0, chunks).All(_done.Contains);
         }
     }
@@ -68,12 +95,6 @@ public sealed class LiveCaptions : IDisposable
     {
         Interlocked.Exchange(ref _position, Math.Max(0, positionMs));
         if (durationMs > 0) Interlocked.Exchange(ref _durationMs, durationMs);
-        var working = Volatile.Read(ref _working);
-        if (working >= 0)
-        {
-            var start = (long)working * ChunkMs;
-            if (positionMs < start - ChunkMs || positionMs > start + AheadMs + ChunkMs) _chunk?.Cancel();
-        }
     }
 
     public string? TextAt(long ms)
@@ -96,21 +117,36 @@ public sealed class LiveCaptions : IDisposable
         lock (_gate) return _done.Contains((int)(ms / ChunkMs));
     }
 
-    private int? NextChunk()
+    private int? Claim()
     {
         var pos = Interlocked.Read(ref _position);
-        var total = Interlocked.Read(ref _durationMs);
+        var chunks = TotalChunks;
         var first = (int)(pos / ChunkMs);
         var last = (int)((pos + AheadMs) / ChunkMs);
         lock (_gate)
         {
-            for (var k = first; k <= last; k++)
+            bool Free(int k) => !_done.Contains(k) && !_busy.Contains(k) && (chunks == 0 || k < chunks);
+            int? pick = null;
+            for (var k = first; k <= last && pick is null; k++) if (Free(k)) pick = k;
+            if (pick is null && _whole)
             {
-                if (total > 0 && (long)k * ChunkMs >= total) return null;
-                if (!_done.Contains(k)) return k;
+                for (var k = last + 1; k < chunks && pick is null; k++) if (Free(k)) pick = k;
+                for (var k = 0; k < first && pick is null; k++) if (Free(k)) pick = k;
             }
+            if (pick is { } p) _busy.Add(p);
+            return pick;
         }
-        return null;
+    }
+
+    private (int Workers, int Threads) Budget()
+    {
+        var cores = Environment.ProcessorCount;
+        return _speed switch
+        {
+            CaptionSpeed.Quiet => (1, Math.Clamp(cores / 4, 2, 4)),
+            CaptionSpeed.Fast => (Math.Clamp(cores / 8, 1, 3), Math.Clamp(cores / 2, 2, 8)),
+            _ => (1, Math.Clamp(cores / 2, 2, 8)),
+        };
     }
 
     private async Task RunAsync()
@@ -127,40 +163,43 @@ public sealed class LiveCaptions : IDisposable
             Directory.CreateDirectory(_workDir);
             using var factory = WhisperFactory.FromPath(_transcriber.ModelFile(_model));
             Status = "Listening";
-            while (!ct.IsCancellationRequested)
-            {
-                if (NextChunk() is not { } k)
-                {
-                    if (Complete) Status = "Done";
-                    await Task.Delay(300, ct);
-                    continue;
-                }
-                using var chunkCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                _chunk = chunkCts;
-                Volatile.Write(ref _working, k);
-                try
-                {
-                    await ProcessChunkAsync(factory, ffmpeg, k, chunkCts.Token);
-                    lock (_gate) _done.Add(k);
-                    Status = Complete ? "Done" : "Listening";
-                }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
-                finally
-                {
-                    Volatile.Write(ref _working, -1);
-                    _chunk = null;
-                }
-            }
+            var (workers, threads) = Budget();
+            await Task.WhenAll(Enumerable.Range(0, workers).Select(i => WorkerAsync(factory, ffmpeg, i, threads, ct)));
         }
         catch (OperationCanceledException) { }
         catch (Exception e)
         {
-            Error = e is MediaException or JobFailedException ? e.Message : "Live subtitles stopped: " + e.Message;
+            Error = e is MediaException or JobFailedException ? e.Message : "Subtitles stopped: " + e.Message;
             Status = "Failed";
         }
     }
 
-    private async Task ProcessChunkAsync(WhisperFactory factory, string ffmpeg, int k, CancellationToken ct)
+    private async Task WorkerAsync(WhisperFactory factory, string ffmpeg, int index, int threads, CancellationToken ct)
+    {
+        if (index > 0) await _languageKnown.Task.WaitAsync(ct);
+        while (!ct.IsCancellationRequested)
+        {
+            if (Claim() is not { } k)
+            {
+                if (Complete) Status = "Done";
+                await Task.Delay(300, ct);
+                continue;
+            }
+            try
+            {
+                await ProcessChunkAsync(factory, ffmpeg, k, threads, ct);
+                lock (_gate) _done.Add(k);
+                _languageKnown.TrySetResult();
+                Status = Complete ? "Done" : "Listening";
+            }
+            finally
+            {
+                lock (_gate) _busy.Remove(k);
+            }
+        }
+    }
+
+    private async Task ProcessChunkAsync(WhisperFactory factory, string ffmpeg, int k, int threads, CancellationToken ct)
     {
         var startMs = (long)k * ChunkMs;
         var wav = Path.Combine(_workDir, $"live-{Guid.NewGuid():N}.wav");
@@ -181,9 +220,7 @@ public sealed class LiveCaptions : IDisposable
                 if (Interlocked.Read(ref _durationMs) <= 0) Interlocked.Exchange(ref _durationMs, startMs);
                 return;
             }
-            var builder = factory.CreateBuilder()
-                .WithLanguage(_language)
-                .WithThreads(Math.Clamp(Environment.ProcessorCount / 4, 2, 6));
+            var builder = factory.CreateBuilder().WithLanguage(_language).WithThreads(threads);
             if (_translate) builder = builder.WithTranslate();
             await using var processor = builder.Build();
             await using var audio = File.OpenRead(wav);
@@ -212,9 +249,5 @@ public sealed class LiveCaptions : IDisposable
         return Transcriber.WriteSrt(mediaPath, lang, list.Select(c => (TimeSpan.FromMilliseconds(c.StartMs), TimeSpan.FromMilliseconds(c.EndMs), c.Text)), "fluxget");
     }
 
-    public void Dispose()
-    {
-        _stop.Cancel();
-        _chunk?.Cancel();
-    }
+    public void Dispose() => _stop.Cancel();
 }

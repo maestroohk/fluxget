@@ -36,3 +36,26 @@ public sealed class LiveCaptionsTests
         return null;
     }
 }
+
+public sealed class WhisperBenchmark
+{
+    [Fact]
+    public async Task Transcribe_three_minutes_of_speech()
+    {
+        var mode = Environment.GetEnvironmentVariable("FLUXGET_BENCH_WHISPER");
+        var dataDir = Environment.GetEnvironmentVariable("FLUXGET_TEST_MODELS_DATA");
+        var wav = Path.Combine(Path.GetTempPath(), "fluxget-player-samples", "speech-3min.wav");
+        if (mode is null || dataDir is null || !File.Exists(wav)) return;
+        Transcriber.UseGpu(mode == "gpu");
+        var model = Environment.GetEnvironmentVariable("FLUXGET_BENCH_MODEL") ?? "ggml-base.bin";
+        var threads = int.TryParse(Environment.GetEnvironmentVariable("FLUXGET_BENCH_THREADS"), out var t) ? t : Math.Clamp(Environment.ProcessorCount / 2, 2, 8);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var factory = Whisper.net.WhisperFactory.FromPath(Path.Combine(dataDir, "models", model), new Whisper.net.WhisperFactoryOptions { UseGpu = mode == "gpu", GpuDevice = int.TryParse(Environment.GetEnvironmentVariable("FLUXGET_BENCH_DEVICE"), out var dev) ? dev : 0 });
+        var load = sw.ElapsedMilliseconds;
+        await using var processor = factory.CreateBuilder().WithLanguage("en").WithThreads(threads).Build();
+        await using var audio = File.OpenRead(wav);
+        var lines = 0;
+        await foreach (var _ in processor.ProcessAsync(audio)) lines++;
+        Assert.Fail($"BENCH {mode} dev {Environment.GetEnvironmentVariable("FLUXGET_BENCH_DEVICE")} {model} threads {threads} runtime {Transcriber.LoadedRuntime}: load {load} ms, 180 s audio in {sw.ElapsedMilliseconds - load} ms, {lines} lines");
+    }
+}

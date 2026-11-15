@@ -105,15 +105,17 @@ export function Sparkline({ values, height = 44, className, stroke = 'var(--acce
 
 export function Modal({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
+  const close = useRef(onClose)
+  close.current = onClose
   useEffect(() => {
     if (!open) return
     ;(window as any).chrome?.webview?.postMessage({ type: 'player', cmd: 'obscured', value: true })
     const prev = document.activeElement as HTMLElement | null
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && close.current()
     window.addEventListener('keydown', key)
-    setTimeout(() => (ref.current?.querySelector<HTMLElement>('textarea,input:not([type=hidden]),select') ?? ref.current?.querySelector<HTMLElement>('button'))?.focus(), 10)
-    return () => { window.removeEventListener('keydown', key); prev?.focus(); (window as any).chrome?.webview?.postMessage({ type: 'player', cmd: 'obscured', value: false }) }
-  }, [open, onClose])
+    const focus = setTimeout(() => (ref.current?.querySelector<HTMLElement>('textarea,input:not([type=hidden])') ?? ref.current?.querySelector<HTMLElement>('[role=dialog] button:not([aria-label=Close])'))?.focus({ preventScroll: true }), 10)
+    return () => { clearTimeout(focus); window.removeEventListener('keydown', key); prev?.focus(); (window as any).chrome?.webview?.postMessage({ type: 'player', cmd: 'obscured', value: false }) }
+  }, [open])
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 p-0 backdrop-blur-[2px] animate-fade sm:items-center sm:p-6" onMouseDown={e => e.target === e.currentTarget && onClose()}>
@@ -130,12 +132,14 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
 }
 
 export function Drawer({ open, onClose, children, title }: { open: boolean; onClose: () => void; children: ReactNode; title: ReactNode }) {
+  const close = useRef(onClose)
+  close.current = onClose
   useEffect(() => {
     if (!open) return
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && close.current()
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [open, onClose])
+  }, [open])
   if (!open) return null
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/20 animate-fade" onMouseDown={e => e.target === e.currentTarget && onClose()}>

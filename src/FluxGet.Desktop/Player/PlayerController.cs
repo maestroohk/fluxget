@@ -12,9 +12,9 @@ internal enum PlayerMode { Embedded, Fullscreen, Mini }
 
 internal sealed record QueueItem(string Source, string Title, long? JobId, bool IsStream);
 
-internal sealed record CaptionSettings(string Model, string Language, bool Translate);
+internal sealed record CaptionSettings(string Model, string Language, bool Translate, CaptionSpeed Speed);
 
-internal delegate LiveCaptions CaptionFactory(string source, IReadOnlyDictionary<string, string>? headers, CaptionSettings settings, long startMs, long durationMs);
+internal delegate LiveCaptions CaptionFactory(string source, IReadOnlyDictionary<string, string>? headers, CaptionSettings settings, long startMs, long durationMs, bool whole);
 
 internal sealed class PlayerController : IDisposable
 {
@@ -49,6 +49,12 @@ internal sealed class PlayerController : IDisposable
     private string? _notice;
     private long _noticeUntil;
     private bool _retried;
+    private string _repeat = "off";
+    private bool _shuffle;
+    private long _sleepAt;
+    private bool _sleepAfterItem;
+    private string? _lastSnapshot;
+    private readonly Random _random = new();
     private CancellationTokenSource? _resolving;
     private string? _status;
     private readonly CaptionFactory? _captionFactory;
@@ -239,15 +245,27 @@ internal sealed class PlayerController : IDisposable
         SyncCaptions(item, plan, startMs);
         _openClock.Restart();
         _reachedPlaying = false;
-        _mp.Play(media);
+        OnEngine(() => _mp.Play(media));
         Push();
     }
 
     private void StopEngine()
     {
-        if (_mp.IsPlaying || _mp.State is VLCState.Paused or VLCState.Opening or VLCState.Buffering) _mp.Stop();
-        _media?.Dispose();
+        var old = _media;
         _media = null;
+        OnEngine(() =>
+        {
+            if (_mp.State is not (VLCState.NothingSpecial or VLCState.Stopped or VLCState.Ended or VLCState.Error)) _mp.Stop();
+            old?.Dispose();
+        });
+    }
+
+    private Task _engine = Task.CompletedTask;
+    private readonly object _engineGate = new();
+
+    private void OnEngine(Action action)
+    {
+        lock (_engineGate) _engine = _engine.ContinueWith(_ => { try { action(); } catch (Exception) { } }, TaskScheduler.Default);
     }
 
     private void OnPlaying()
@@ -264,8 +282,41 @@ internal sealed class PlayerController : IDisposable
     private void OnEnded()
     {
         if (Current is { } item) _store.SavePlayback(Key(item), item.Title, 0, _mp.Length);
-        if (_index + 1 < _queue.Count) PlayIndex(_index + 1, 0);
+        if (_sleepAfterItem) { _sleepAfterItem = false; Push(); return; }
+        if (_repeat == "one") { PlayIndex(_index, 0); return; }
+        if (NextIndex(true) is { } next) PlayIndex(next, 0);
         else Push();
+    }
+
+    private int? NextIndex(bool automatic)
+    {
+        if (_queue.Count == 0) return null;
+        if (_shuffle && _queue.Count > 1)
+        {
+            int pick;
+            do pick = _random.Next(_queue.Count); while (pick == _index);
+            return pick;
+        }
+        if (_index + 1 < _queue.Count) return _index + 1;
+        return automatic && _repeat == "all" || !automatic && _repeat == "all" ? 0 : null;
+    }
+
+    private void SaveFrame()
+    {
+        if (!HasMedia || _mp.VideoTrackCount <= 0) return;
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "FluxGet");
+        Directory.CreateDirectory(dir);
+        var name = string.Concat((Current?.Title ?? "frame").Split(Path.GetInvalidFileNameChars())).Trim();
+        if (name.Length > 80) name = name[..80];
+        var at = TimeSpan.FromMilliseconds(Math.Max(0, _mp.Time));
+        var path = Path.Combine(dir, $"{name} {(int)at.TotalHours:00}.{at.Minutes:00}.{at.Seconds:00}.png");
+        if (_mp.TakeSnapshot(0, path, 0, 0)) _lastSnapshot = path;
+    }
+
+    private void SetSleep(string value)
+    {
+        _sleepAfterItem = value == "end";
+        _sleepAt = int.TryParse(value, out var minutes) && minutes > 0 ? Environment.TickCount64 + minutes * 60_000L : 0;
     }
 
     private void SetError(string message)
@@ -282,8 +333,11 @@ internal sealed class PlayerController : IDisposable
         _store.SavePlayback(Key(item), item.Title, _mp.Time, _mp.Length);
     }
 
+    private bool EngineBusy => !_engine.IsCompleted;
+
     private void Tick()
     {
+        if (EngineBusy) return;
         if (!_reachedPlaying && _openClock.IsRunning && _error is null && Current is { } opening
             && _mp.State is VLCState.Opening or VLCState.Buffering or VLCState.NothingSpecial
             && _openClock.ElapsedMilliseconds > (opening.IsStream ? 25_000 : 10_000))
@@ -307,11 +361,17 @@ internal sealed class PlayerController : IDisposable
             SaveResume();
         }
         UpdateCaptions();
+        if (_sleepAt > 0 && Environment.TickCount64 >= _sleepAt) { _sleepAt = 0; if (_mp.IsPlaying) _mp.SetPause(true); }
         if (_sinks.Count > 0 && (HasMedia || _error is not null)) Push();
     }
 
     public void Push()
     {
+        if (EngineBusy)
+        {
+            _engine.ContinueWith(_ => _ui.BeginInvoke(Push), TaskScheduler.Default);
+            return;
+        }
         var json = JsonSerializer.Serialize(new { type = "playerState", state = Snapshot() }, Options);
         foreach (var sink in _sinks.ToArray()) sink(json);
     }
@@ -370,9 +430,18 @@ internal sealed class PlayerController : IDisposable
                 translate = _captions.Translate,
                 count = _captions.Count,
                 ready = _captions.Ready(_mp.Time),
+                progress = Math.Round(_captions.Progress, 3),
+                whole = _captions.Whole,
+                speed = _captions.Speed.ToString().ToLowerInvariant(),
                 saved = _captionsSaved
             },
-            captionsAvailable = _captionFactory is not null
+            captionsAvailable = _captionFactory is not null,
+            repeat = _repeat,
+            shuffle = _shuffle,
+            sleep = _sleepAfterItem ? "end" : _sleepAt > 0 ? ((_sleepAt - Environment.TickCount64) / 1000).ToString(System.Globalization.CultureInfo.InvariantCulture) : null,
+            snapshot = _lastSnapshot,
+            chapter = _mp.ChapterCount > 0 ? _mp.Chapter : -1,
+            chapters = _mp.ChapterCount > 1 ? (_mp.FullChapterDescriptions(-1) ?? []).Select(c => new { title = c.Name, start = c.TimeOffset }) : null
         };
     }
 
@@ -410,7 +479,12 @@ internal sealed class PlayerController : IDisposable
             case "rotate": _rotation = ((int)D("value") % 360 + 360) % 360; Reopen(); break;
             case "hardwareDecoding": _hardwareDecoding = B("value"); Reopen(); break;
             case "subtitleScale": _subtitleScale = (int)Math.Clamp(D("value"), 50, 300); Reopen(); break;
-            case "next": if (_index + 1 < _queue.Count) PlayIndex(_index + 1); break;
+            case "next": if (NextIndex(false) is { } n) PlayIndex(n); break;
+            case "repeat": _repeat = S("value") is "one" or "all" ? S("value") : "off"; break;
+            case "shuffle": _shuffle = B("value"); break;
+            case "snapshot": SaveFrame(); break;
+            case "chapter": if ((int)D("index") is var ch && ch >= 0 && ch < _mp.ChapterCount) _mp.Chapter = ch; break;
+            case "sleep": SetSleep(S("value")); break;
             case "prev": if (_mp.Time > 5000 || _index == 0) SeekTo(0); else PlayIndex(_index - 1); break;
             case "playIndex": PlayIndex((int)D("index")); break;
             case "startOver": SeekTo(0); _resumedFrom = 0; break;
@@ -423,7 +497,8 @@ internal sealed class PlayerController : IDisposable
             case "openUrl": OpenUrl(S("url"), B("append")); break;
             case "quality": ChangeQuality((int)D("value")); break;
             case "liveCaptions":
-                if (B("on")) EnableCaptions(new CaptionSettings(S("model") is { Length: > 0 } model && Transcriber.IsKnownModel(model) ? model : "base", S("language") is { Length: > 0 } lang ? lang : "auto", B("translate")));
+                if (B("on")) EnableCaptions(new CaptionSettings(S("model") is { Length: > 0 } model && Transcriber.IsKnownModel(model) ? model : "base", S("language") is { Length: > 0 } lang ? lang : "auto", B("translate"),
+                    Enum.TryParse<CaptionSpeed>(S("speed"), true, out var speed) ? speed : CaptionSpeed.Balanced));
                 else DisableCaptions();
                 break;
             case "addSubtitleFile": AddSubtitle(S("path")); break;
@@ -524,12 +599,12 @@ internal sealed class PlayerController : IDisposable
         if (_captionSettings is null || _captionFactory is null) return;
         if (_mp.Spu >= 0) _mp.SetSpu(-1);
         var source = plan is not null ? plan.AudioUrl ?? plan.VideoUrl : item.Source;
-        if (_captions is { } existing && existing.Source == source && existing.Model == _captionSettings.Model && existing.Translate == _captionSettings.Translate) return;
+        if (_captions is { } existing && existing.Source == source && existing.Model == _captionSettings.Model && existing.Translate == _captionSettings.Translate && existing.Speed == _captionSettings.Speed) return;
         _captions?.Dispose();
         _captionsSaved = null;
         ShowCaption(null);
         var duration = plan?.Duration is { } d ? (long)(d * 1000) : _mp.Length;
-        _captions = _captionFactory(source, plan?.Headers, _captionSettings, startMs, plan?.Live == true ? 0 : duration);
+        _captions = _captionFactory(source, plan?.Headers, _captionSettings, startMs, plan?.Live == true ? 0 : duration, !item.IsStream);
     }
 
     private void UpdateCaptions()
@@ -683,8 +758,10 @@ internal sealed class PlayerController : IDisposable
         _mp.Hwnd = View.Handle;
         var track = _mp.VideoTrack;
         if (track < 0 || !HasMedia) return;
+        var at = _mp.Time;
         _mp.SetVideoTrack(-1);
         _mp.SetVideoTrack(track);
+        if (_mp.IsSeekable && at > 0) _mp.Time = at;
     }
 
     public (int Displayed, int Lost) CurrentMediaStats()
@@ -700,6 +777,7 @@ internal sealed class PlayerController : IDisposable
         SaveResume();
         _timer.Dispose();
         StopEngine();
+        _engine.Wait(5000);
         _mp.Dispose();
         View.Dispose();
         _vlc.Dispose();
