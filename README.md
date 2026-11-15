@@ -5,9 +5,11 @@ A fast, reliable download manager for Windows: segmented HTTP downloads that sur
 - **Direct downloads** split across connections when the server allows it, resume safely after pause, restart, crash or network loss, and never mix bytes from two versions of a file.
 - **Media** from YouTube and other sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp): pick a real resolution, container or audio format; whole playlists and channels; audio extraction and conversion with FFmpeg (stream copy when no re-encode is needed).
 - **Torrents** via [MonoTorrent](https://github.com/alanmcgovern/monotorrent): magnet links and .torrent files, file selection, peers, upload limit, seed ratio.
-- **Browser extension** (Chrome, Edge) that sends links, captured downloads and page videos to FluxGet after a one-time pairing.
+- **Browser extension** (Chrome, Edge, Brave, Opera, Firefox): with "Detect video and audio playing in browsers" on (Settings, on by default) a small FluxGet button appears on any video or audio that plays, with download options and "Play in FluxGet"; it also sends links and captured downloads after a one-time pairing.
 - **Built-in player** (LibVLC): plays finished downloads and local files, MP4/MKV/WebM/AVI and MP3/FLAC/M4A/Opus, embedded and external subtitles (SRT, ASS, VTT), audio tracks, speed 0.25–4×, frame stepping, picture controls, fullscreen, an always-on-top mini player, queue, resume and a media library. Partially downloaded files can be previewed when their beginning is on disk.
 - **Photos, galleries and page files**: Instagram/X/Reddit/Pinterest/Tumblr/Flickr posts and carousels through [gallery-dl](https://codeberg.org/mikf/gallery-dl); on any other page FluxGet lists the images, videos, audio, documents and archives it links to, lets you pick, and downloads them with the resumable downloader into a folder named after the page.
+- **Streaming**: paste a YouTube (or other supported site) link on the Player screen, or press "Stream" on the Media page or "Play in FluxGet" in the browser, and it plays straight from the site without downloading — up to 1080p by default, with a quality menu, fast seeking and an automatic step down when the connection cannot keep up.
+- **Live subtitles**: switch on the CC menu's "Live subtitles" (or press C) and FluxGet transcribes the audio a little ahead of playback, for files and streams, entirely on this computer.
 - **Offline subtitles**: generates subtitles with whisper.cpp on your own computer (no upload, no account), optionally translated to English; the speech model downloads once (75–466 MB).
 - **Queue, schedule and bandwidth control**: concurrency limit, priorities, time windows, global and per-download speed limits, checksum verification.
 
@@ -132,6 +134,8 @@ The player is tested through the real Windows UI with `FluxGet.exe --player-self
 - Media progress for video+audio downloads grows as yt-dlp starts each stream, because the second stream's size is only known when it starts.
 - Firefox is not packaged yet; the extension uses only standard WebExtension APIs.
 - Preview during download works only for single-stream direct downloads whose beginning has been downloaded, and not for MP4 files that keep their index at the end. Media (yt-dlp) and torrent downloads play once finished.
+- Streams start after the site's video address has been worked out (about 5–7 s for YouTube) plus about 3 s of buffering. Live streams play from the live edge. Sites that need a sign-in stream only when the page was sent from a signed-in browser with "Pass my site cookies" on.
+- Chrome only installs extensions that are not in the Chrome Web Store through Developer mode → Load unpacked; the steps are in Settings.
 - Rotating the picture, switching hardware decoding or changing subtitle size reopens the file at the same position (a short pause).
 - Instagram, X and Reddit refuse anonymous requests for most posts. Turn on "Pass my site cookies" in the extension and use "Download from this page with FluxGet" from the signed-in browser; the session is kept in memory for 30 minutes and never written to disk except as a temporary file while a tool runs.
 - The page scan reads the page's HTML and does not run its JavaScript, so images that a site loads only by script are not listed. At most 300 gallery items and 500 page files are shown.

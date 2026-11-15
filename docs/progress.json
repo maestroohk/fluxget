@@ -1368,6 +1368,93 @@
         "test: Page_scan_finds_images_media_and_linked_files, Page_scan_reads_a_live_page_and_direct_files",
         "manual 2026-11-15: ftp.gnu.org/gnu/hello listed 26 files + 4 icons (icons unselected); 2 selected archives downloaded and pass gzip -t"
       ]
+    },
+    {
+      "id": "FG-088",
+      "milestone": "M7",
+      "points": 5,
+      "priority": "P0",
+      "role": "user",
+      "goal": "paste a YouTube or other video link and watch it stream without downloading",
+      "value": "Watch and download the way IDM users expect",
+      "deps": [],
+      "criteria": [
+        "Page links resolved and streamed",
+        "Quality menu up to 4K, 1080p default",
+        "Fast seeking",
+        "Steps down quality after repeated stalls",
+        "Resume by page link",
+        "Stream button on the Media page and Play in FluxGet in the browser"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-15 (55/55 incl. stream checks), bench/player-results.md",
+        "YouTube: 12745 ms to playing, seek 1847 ms, 0 stalls in 15 s at 1080p, 720p switch keeps position",
+        "unverified: automatic step-down on a slow connection (logic only)"
+      ]
+    },
+    {
+      "id": "FG-089",
+      "milestone": "M7",
+      "points": 5,
+      "priority": "P0",
+      "role": "user",
+      "goal": "see subtitles generated live while a video or stream plays",
+      "value": "Watch and download the way IDM users expect",
+      "deps": [],
+      "criteria": [
+        "Switch on from the CC menu or with C",
+        "Lines appear within seconds and follow seeks",
+        "Runs on this computer only",
+        "Saved next to local files when complete"
+      ],
+      "status": "verified",
+      "evidence": [
+        "self-test 2026-11-15 (55/55 incl. stream checks), bench/player-results.md",
+        "first line after 2700 ms, follows a seek to 0:09, turns off cleanly",
+        "test: LiveCaptionsTests (needs a downloaded model)"
+      ]
+    },
+    {
+      "id": "FG-090",
+      "milestone": "M7",
+      "points": 3,
+      "priority": "P1",
+      "role": "user",
+      "goal": "have FluxGet detect video and audio playing in my browser, switched on or off in the app",
+      "value": "Watch and download the way IDM users expect",
+      "deps": [],
+      "criteria": [
+        "Setting in FluxGet",
+        "Button on any site's video or audio",
+        "Detected streams offered on sites that hide the file",
+        "Play in FluxGet"
+      ],
+      "status": "done",
+      "evidence": [
+        "e2e: content script runs on a plain page, detects the audio stream, app setting read by the extension",
+        "unverified: button on third-party sites in the user's Chrome"
+      ]
+    },
+    {
+      "id": "FG-091",
+      "milestone": "M7",
+      "points": 2,
+      "priority": "P1",
+      "role": "user",
+      "goal": "see clearly which file is being saved and where",
+      "value": "Watch and download the way IDM users expect",
+      "deps": [],
+      "criteria": [
+        "Real output file name for media downloads",
+        "Saving as … in … with a folder button",
+        "Details open when a media download starts"
+      ],
+      "status": "verified",
+      "evidence": [
+        "test: Media_jobs_show_the_real_output_file_name",
+        "manual 2026-11-15: download details show Saving as emacs-29.4.tar.xz in the download folder"
+      ]
     }
   ]
 }

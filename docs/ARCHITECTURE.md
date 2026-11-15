@@ -246,6 +246,26 @@ Partially downloaded files are previewed through `/preview/{id}`, which serves o
 
 Offline subtitles: FFmpeg extracts 16 kHz mono audio, whisper.cpp (Whisper.net) transcribes it on the CPU with half the cores at most, and an SRT is written next to the media (`name.en.srt`). The speech model (Tiny 75 MB, Base 142 MB, Small 466 MB) downloads once from Hugging Face and is verified against its published SHA-256.
 
+## Streaming and live subtitles
+
+```mermaid
+flowchart LR
+  link[Pasted link / Stream button / Play in FluxGet] --> pc[PlayerController]
+  pc -- page link --> y[yt-dlp -J<br/>title, duration, HLS master or DASH URLs]
+  y --> plan[StreamPlan]
+  plan -- HLS master --> vlc[LibVLC adaptive<br/>maxheight = chosen quality]
+  plan -- separate video + audio --> vlc2[LibVLC + audio slave]
+  pc -- 2 stalls in 30 s --> down[step down one quality, same position]
+  pc -- stream fails to start --> retry[resolve again once]
+  pc -- C / Live subtitles --> lc[LiveCaptions]
+  lc -- 20 s chunks from playback position, 45 s ahead --> ff[FFmpeg -ss chunk to 16 kHz WAV] --> w[whisper.cpp<br/>quarter of the CPU cores]
+  w -- timed lines --> lc -- current line --> mq[LibVLC marquee on the video<br/>embedded, fullscreen, mini]
+```
+
+A page link is resolved with yt-dlp into a `StreamPlan`. When the site offers an HLS master playlist (YouTube does) LibVLC plays that with segment-based seeking and the quality capped at the chosen height; otherwise the separate video and audio URLs are played together. The cache is 1 s. Two rebuffering stalls within 30 seconds (ignoring the first 5 s after a seek) drop the quality one step. Resume positions for streams are stored under the page URL.
+
+Live subtitles transcribe 20-second chunks starting at the playback position and keep up to 45 seconds ahead; a seek moves the window. Lines are drawn by LibVLC's marquee filter, so they appear on the video in every mode. When a local file has been covered completely the lines are saved as `name.<language>.fluxget.srt`.
+
 ## Photos, galleries and page files
 
 ```mermaid
