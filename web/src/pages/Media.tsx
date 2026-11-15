@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AudioLines, CheckSquare, Clapperboard, Film, ListVideo, Loader2, Music2, Square, Wand2 } from 'lucide-react'
+import { AudioLines, Check, CheckSquare, Clapperboard, FileText, Film, Images, ListVideo, Loader2, Music2, Square, Wand2 } from 'lucide-react'
 import { api, type Job } from '../api'
 import { useStore } from '../store'
 import { bytes, duration } from '../format'
@@ -30,6 +30,13 @@ interface MediaInfo {
   live: boolean
 }
 
+interface GalleryItem { index: number; url: string; name: string; ext: string; width: number | null; height: number | null; kind: 'image' | 'video' | 'audio' | 'file'; preview: string | null }
+interface GalleryInfo { type: 'gallery'; url: string; title: string; source: string; uploader: string | null; items: GalleryItem[]; hasMore: boolean; generic: boolean }
+type Found = MediaInfo | GalleryInfo
+
+const DECOR = /\/icons?\/|favicon|sprite|spacer|blank\.gif|pixel\.(gif|png)|emoji|badge|button/i
+const RASTER = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif', 'heic', 'bmp', 'jxl'])
+
 const AUDIO_FORMATS = [
   { value: 'mp3', label: 'MP3', qualities: ['320', '256', '192', '128', '96'] },
   { value: 'm4a', label: 'M4A', qualities: ['256', '192', '128'] },
@@ -43,7 +50,7 @@ export function Media() {
   const { params } = useRoute()
   const jobs = useStore(s => s.jobs)
   const [url, setUrl] = useState(params.get('url') ?? '')
-  const [info, setInfo] = useState<MediaInfo | null>(null)
+  const [info, setInfo] = useState<Found | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [open, setOpen] = useState<number | null>(null)
@@ -55,7 +62,7 @@ export function Media() {
     if (!first) return
     setLoading(true); setError(''); setInfo(null)
     try {
-      setInfo(await api.post<MediaInfo>('/api/media/analyze', { url: first }))
+      setInfo(await api.post<Found>('/api/media/analyze', { url: first }))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -75,15 +82,17 @@ export function Media() {
           <form onSubmit={e => { e.preventDefault(); void analyze() }} className="flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
               <Clapperboard size={16} className="absolute top-1/2 left-3.5 -translate-y-1/2 text-faint" />
-              <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Paste a video, Short, Reel, TikTok or playlist link"
+              <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Paste a video, post, photo, playlist or page link"
                 className={inputClass + ' h-11 pl-10 text-[14px]'} aria-label="Media address" />
             </div>
             <Button variant="primary" className="h-11 px-5" disabled={!url.trim() || loading}>{loading ? <Loader2 size={16} className="animate-spin" /> : 'Find formats'}</Button>
           </form>
-          <p className="mt-2 text-[12px] text-muted">Works with YouTube, Facebook, Instagram, TikTok, X, Reddit, Vimeo, Twitch and other sites supported by yt-dlp. Only media you can already watch is available; FluxGet never bypasses DRM or sign-in.</p>
+          <p className="mt-2 text-[12px] text-muted">Videos from YouTube, Facebook, Instagram, TikTok, X, Reddit, Vimeo, Twitch and more; photos and galleries from Instagram, X, Reddit, Pinterest, Tumblr, Flickr and others; images and files on any other page. Only what you can already see is available; FluxGet never bypasses DRM or sign-in.</p>
           {error && <div className="mt-4 rounded-xl border border-bad/25 bg-bad-soft p-4 text-[13px]">{error}</div>}
           {loading && <AnalyzeSkeleton />}
-          {info && <MediaResult info={info} onDone={() => { setInfo(null); setUrl('') }} />}
+          {info && (info.type === 'gallery'
+            ? <GalleryResult info={info} onDone={() => { setInfo(null); setUrl('') }} />
+            : <MediaResult info={info} onImages={g => setInfo(g)} onDone={() => { setInfo(null); setUrl('') }} />)}
         </section>
 
         <section>
@@ -110,7 +119,7 @@ function AnalyzeSkeleton() {
   )
 }
 
-function MediaResult({ info, onDone }: { info: MediaInfo; onDone: () => void }) {
+function MediaResult({ info, onDone, onImages }: { info: MediaInfo; onDone: () => void; onImages: (g: GalleryInfo) => void }) {
   const [mode, setMode] = useState<'video' | 'audio'>('video')
   const [height, setHeight] = useState<number | null>(info.video[0]?.height ?? null)
   const [container, setContainer] = useState('mp4')
@@ -121,6 +130,7 @@ function MediaResult({ info, onDone }: { info: MediaInfo; onDone: () => void }) 
   const [selected, setSelected] = useState<Set<string>>(() => new Set(info.entries.map(e => e.id)))
   const [hasMore, setHasMore] = useState(info.hasMore)
   const [busy, setBusy] = useState(false)
+  const [finding, setFinding] = useState(false)
   const fmt = AUDIO_FORMATS.find(f => f.value === audioFormat)!
   const isList = info.type === 'playlist'
 
@@ -240,10 +250,75 @@ function MediaResult({ info, onDone }: { info: MediaInfo; onDone: () => void }) 
       )}
 
       <div className="flex items-center justify-end gap-3 border-t border-line bg-raised px-5 py-3">
+        <Button size="sm" variant="ghost" disabled={finding} onClick={async () => { setFinding(true); await attempt(async () => onImages(await api.post<GalleryInfo>('/api/media/gallery', { url: info.url }))); setFinding(false) }}>
+          {finding ? <Loader2 size={14} className="animate-spin" /> : <Images size={14} />} Images on this page
+        </Button>
         <span className="mr-auto flex items-center gap-1.5 text-[12px] text-muted">{mode === 'audio' ? <AudioLines size={14} /> : <Film size={14} />}{mode === 'audio' ? `${fmt.label}${fmt.qualities.length ? ` · ${quality} kbps` : ''}` : `${height ? label(height) : 'Best'} · ${container.toUpperCase()}`}</span>
         <Button variant="primary" disabled={busy || (isList && selected.size === 0)} onClick={download}>{isList ? `Download ${selected.size}` : 'Download'}</Button>
       </div>
     </Card>
+  )
+}
+
+function GalleryResult({ info, onDone }: { info: GalleryInfo; onDone: () => void }) {
+  const wanted = (g: GalleryItem) => !info.generic || g.kind !== 'image' || (RASTER.has(g.ext) && !(g.width && g.width < 120) && !DECOR.test(g.url))
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(info.items.filter(wanted).map(g => g.index)))
+  const [busy, setBusy] = useState(false)
+  const all = selected.size === info.items.length
+  const count = (k: GalleryItem['kind']) => info.items.filter(g => g.kind === k).length
+  const summary = (['image', 'video', 'audio', 'file'] as const).map(k => [k, count(k)] as const).filter(([, n]) => n > 0)
+    .map(([k, n]) => `${n} ${k === 'image' ? 'image' : k === 'video' ? 'video' : k === 'audio' ? 'audio file' : 'file'}${n === 1 || k === 'audio' && n === 1 ? '' : 's'}`).join(', ')
+  const toggle = (i: number) => setSelected(s => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n })
+
+  const download = async () => {
+    setBusy(true)
+    const chosen = info.items.filter(g => selected.has(g.index))
+    const ok = await attempt(() => api.post('/api/media/gallery/download', info.generic
+      ? { url: info.url, title: info.title, files: chosen.map(g => ({ url: g.url, name: g.name || null })) }
+      : { url: info.url, title: info.title, indices: chosen.map(g => g.index) }), chosen.length === 1 ? 'Saving 1 file' : `Saving ${chosen.length} files`)
+    setBusy(false)
+    if (ok) onDone()
+  }
+
+  return (
+    <Card className="mt-5 overflow-hidden animate-rise">
+      <div className="p-5 pb-4">
+        <div className="text-[11.5px] font-medium tracking-wide text-accent uppercase">{info.source}{info.generic ? ' · images and files' : ''}</div>
+        <h2 className="mt-1 line-clamp-2 text-[17px] leading-snug font-semibold tracking-tight">{info.title}</h2>
+        <div className="mt-1 text-[13px] text-muted">
+          {[info.uploader, `${summary}${info.hasMore ? ' (first ' + info.items.length + ')' : ''}`].filter(Boolean).join(' · ')}
+        </div>
+        {info.generic && <p className="mt-2 text-[12.5px] text-muted">Found on the page. Icons and very small images are not selected. Files download with FluxGet's resumable downloader.</p>}
+      </div>
+      <div className="flex items-center justify-between border-t border-line px-5 py-2.5 text-[12.5px]">
+        <button className="flex items-center gap-1.5 font-medium text-ink-2 hover:text-ink" onClick={() => setSelected(all ? new Set() : new Set(info.items.map(g => g.index)))}>
+          {all ? <CheckSquare size={15} /> : <Square size={15} />} {selected.size} of {info.items.length} selected
+        </button>
+        <Images size={15} className="text-faint" />
+      </div>
+      <div className="grid max-h-[460px] grid-cols-3 gap-2 overflow-y-auto border-t border-line p-3 sm:grid-cols-4 lg:grid-cols-6">
+        {info.items.map(g => <Tile key={g.index} item={g} on={selected.has(g.index)} onToggle={() => toggle(g.index)} />)}
+      </div>
+      <div className="flex items-center justify-end gap-3 border-t border-line bg-raised px-5 py-3">
+        <span className="mr-auto flex min-w-0 items-center gap-1.5 text-[12px] text-muted"><Images size={14} className="shrink-0" /> <span className="truncate">Saved to a folder named after the {info.generic ? 'page' : 'post'}</span></span>
+        <Button variant="primary" disabled={busy || selected.size === 0} onClick={download}>Download {selected.size}</Button>
+      </div>
+    </Card>
+  )
+}
+
+function Tile({ item, on, onToggle }: { item: GalleryItem; on: boolean; onToggle: () => void }) {
+  const [broken, setBroken] = useState(false)
+  return (
+    <button type="button" onClick={onToggle} aria-pressed={on} title={item.name}
+      className={cx('group relative aspect-square overflow-hidden rounded-lg border bg-sunken text-left transition', on ? 'border-accent ring-2 ring-accent/25' : 'border-line opacity-80 hover:opacity-100')}>
+      {item.preview && !broken
+        ? <img src={item.preview} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-full object-cover" />
+        : <span className="flex size-full flex-col items-center justify-center gap-1 px-1 text-faint">{item.kind === 'video' ? <Film size={22} /> : item.kind === 'audio' ? <Music2 size={22} /> : item.kind === 'file' ? <FileText size={22} /> : <Images size={22} />}<span className="text-[11px] uppercase">{item.ext || 'file'}</span>{item.kind === 'file' && <span className="w-full truncate text-center text-[10.5px] normal-case">{item.name}</span>}</span>}
+      <span className={cx('absolute top-1.5 left-1.5 flex size-5 items-center justify-center rounded-md border text-white', on ? 'border-accent bg-accent' : 'border-white/70 bg-black/30')}>{on && <Check size={13} strokeWidth={3} />}</span>
+      {item.kind === 'video' && <span className="absolute right-1.5 bottom-1.5 flex items-center gap-1 rounded bg-black/65 px-1.5 py-0.5 text-[10.5px] font-medium text-white"><Film size={11} /> Video</span>}
+      {item.kind === 'image' && item.width && item.height && <span className="num absolute right-1.5 bottom-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10.5px] text-white opacity-0 transition group-hover:opacity-100">{item.width}×{item.height}</span>}
+    </button>
   )
 }
 

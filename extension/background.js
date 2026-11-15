@@ -6,10 +6,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: MENU.link, title: 'Download link with FluxGet', contexts: ['link'] })
     chrome.contextMenus.create({ id: MENU.media, title: 'Download with FluxGet', contexts: ['video', 'audio', 'image'] })
-    chrome.contextMenus.create({ id: MENU.page, title: 'Download this video with FluxGet', contexts: ['page'], documentUrlPatterns: [
-      '*://*.youtube.com/*', '*://youtu.be/*', '*://*.facebook.com/*', '*://*.instagram.com/*', '*://*.tiktok.com/*',
-      '*://*.x.com/*', '*://x.com/*', '*://*.twitter.com/*', '*://*.reddit.com/*', '*://*.vimeo.com/*', '*://vimeo.com/*', '*://*.twitch.tv/*',
-    ] })
+    chrome.contextMenus.create({ id: MENU.page, title: 'Download from this page with FluxGet', contexts: ['page'], documentUrlPatterns: ['http://*/*', 'https://*/*'] })
   })
   await syncContentScript()
 })

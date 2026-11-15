@@ -15,7 +15,7 @@ public sealed record MediaInfo(
 
 public sealed class MediaException(string message) : Exception(message);
 
-public sealed partial class YtDlp(ToolLocator tools)
+public sealed partial class YtDlp(ToolLocator tools, EngineOptions? options = null, SiteSessions? sessions = null)
 {
     public const int PageSize = 100;
     private readonly SemaphoreSlim _analyzeSlots = new(3);
@@ -45,9 +45,21 @@ public sealed partial class YtDlp(ToolLocator tools)
             var args = CommonArgs();
             args.AddRange(["-J", "--flat-playlist", "--playlist-items", $"{Math.Max(1, start)}:{Math.Max(1, start) + PageSize - 1}"]);
             if (IsSingleVideoUrl(uri)) args.Add("--no-playlist");
+            var session = sessions?.For(uri);
+            var cookieFile = options is null ? null : CookieFile.Write(options.DataDirectory, uri, session);
+            if (cookieFile is not null) args.AddRange(["--cookies", cookieFile]);
+            if (session is not null && session.TryGetValue("User-Agent", out var ua)) args.AddRange(["--user-agent", ua]);
             args.Add("--");
             args.Add(uri.ToString());
-            var result = await ProcessRunner.RunAsync(Exe, args, null, ct, timeout: TimeSpan.FromMinutes(2));
+            ProcessResult result;
+            try
+            {
+                result = await ProcessRunner.RunAsync(Exe, args, null, ct, timeout: TimeSpan.FromMinutes(2));
+            }
+            finally
+            {
+                CookieFile.Delete(cookieFile);
+            }
             if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
                 throw new MediaException(FriendlyError(result.StdErr));
             var info = Parse(result.StdOut, uri.ToString(), start);
@@ -142,6 +154,7 @@ public sealed partial class YtDlp(ToolLocator tools)
         var line = stderr.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.StartsWith("ERROR:", StringComparison.Ordinal)) ?? stderr.Trim().Split('\n').LastOrDefault() ?? "";
         line = AnsiRegex().Replace(line, "").Replace("ERROR: ", "");
         var lower = line.ToLowerInvariant();
+        if (lower.Contains("no video formats found") || lower.Contains("no media found")) return "No video was found at this link.";
         if (lower.Contains("unsupported url")) return "This site or page isn't supported for media downloads. If it is a direct file link, add it as a normal download.";
         if (lower.Contains("private video") || lower.Contains("this video is private")) return "This video is private. Only media you can access can be downloaded.";
         if (lower.Contains("sign in to confirm your age")) return "This video is age-restricted. Enable \"Pass my site cookies\" in the browser extension and send it from a signed-in browser.";

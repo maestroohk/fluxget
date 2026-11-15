@@ -16,10 +16,14 @@ COPY --from=web /src/web/dist /app/wwwroot
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 ARG YTDLP_VERSION=2026.10.26
 ARG DENO_VERSION=2.9.8
+ARG GALLERYDL_VERSION=1.32.20
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl unzip \
  && curl -fsSL -o /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux" \
  && chmod 755 /usr/local/bin/yt-dlp \
+ && curl -fsSL -o /usr/local/bin/gallery-dl "https://codeberg.org/mikf/gallery-dl/releases/download/v${GALLERYDL_VERSION}/gallery-dl.bin" \
+ && curl -fsSL "https://codeberg.org/mikf/gallery-dl/releases/download/v${GALLERYDL_VERSION}/SHA256SUMS" | grep ' gallery-dl.bin$' | sed 's|gallery-dl.bin|/usr/local/bin/gallery-dl|' | sha256sum -c - \
+ && chmod 755 /usr/local/bin/gallery-dl \
  && curl -fsSL -o /tmp/deno.zip "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
  && unzip /tmp/deno.zip -d /usr/local/bin && rm /tmp/deno.zip \
  && apt-get purge -y curl unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*

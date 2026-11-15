@@ -147,7 +147,13 @@ try {
       return { status: res.status, body: await res.json() }
     }, port)
     assert.equal(r.status, 422)
-    assert.match(r.body.detail, /isn't supported|yt-dlp is not installed/)
+    assert.match(r.body.detail, /isn't supported|yt-dlp is not installed|No images, videos or files were found/)
+    const session = await worker.evaluate(async p => {
+      const { token } = await chrome.storage.local.get('token')
+      const res = await fetch(`http://127.0.0.1:${p}/api/media/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com/', headers: { cookie: 'a=1', userAgent: 'e2e' } }) })
+      return res.status
+    }, port)
+    assert.equal(session, 204)
   })
 
   await step('Revoked token returns the popup to pairing', async () => {

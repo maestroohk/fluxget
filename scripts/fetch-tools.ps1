@@ -2,6 +2,7 @@ param(
     [string]$Destination = (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools/bin'),
     [string]$YtDlpVersion = '2026.10.26',
     [string]$DenoVersion = '2.9.8',
+    [string]$GalleryDlVersion = '1.32.20',
     [string]$FfmpegAsset = 'ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip'
 )
 $ErrorActionPreference = 'Stop'
@@ -26,6 +27,11 @@ function Get-Verified([string]$Url, [string]$SumsUrl, [string]$Name, [string]$Ou
 try {
     Get-Verified "https://github.com/yt-dlp/yt-dlp/releases/download/$YtDlpVersion/yt-dlp.exe" `
         "https://github.com/yt-dlp/yt-dlp/releases/download/$YtDlpVersion/SHA2-256SUMS" 'yt-dlp.exe' (Join-Path $Destination 'yt-dlp.exe')
+
+    $gdl = "https://codeberg.org/mikf/gallery-dl/releases/download/v$GalleryDlVersion"
+    Get-Verified "$gdl/gallery-dl.exe" "$gdl/SHA256SUMS" 'gallery-dl.exe' (Join-Path $Destination 'gallery-dl.exe')
+    Get-Verified "$gdl/gallery_dl-$GalleryDlVersion.tar.gz" "$gdl/SHA256SUMS" "gallery_dl-$GalleryDlVersion.tar.gz" (Join-Path $Destination "gallery-dl-source-$GalleryDlVersion.tar.gz")
+    Invoke-WebRequest "https://codeberg.org/mikf/gallery-dl/raw/tag/v$GalleryDlVersion/LICENSE" -OutFile (Join-Path $Destination 'GALLERY-DL-LICENSE.txt') -UseBasicParsing
 
     $denoZip = Join-Path $work 'deno.zip'
     Get-Verified "https://github.com/denoland/deno/releases/download/v$DenoVersion/deno-x86_64-pc-windows-msvc.zip" `

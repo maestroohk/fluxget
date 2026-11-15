@@ -31,6 +31,12 @@ public static class FileNames
         return name;
     }
 
+    public static string FolderName(string title)
+    {
+        var name = Sanitize(title.Replace('/', '-').Replace('\\', '-').Trim(' ', '-'));
+        return name.Length > 80 ? name[..80].TrimEnd(' ', '.', '-') : name;
+    }
+
     public static string Sanitize(string name)
     {
         var lastSep = name.LastIndexOfAny(['/', '\\']);

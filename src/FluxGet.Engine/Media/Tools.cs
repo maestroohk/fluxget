@@ -59,6 +59,7 @@ public sealed class ToolStatus(ToolLocator tools)
         return new
         {
             ytDlp = tools.Find("yt-dlp"),
+            galleryDl = tools.Find("gallery-dl"),
             ffmpeg = tools.Find("ffmpeg"),
             ffprobe = tools.Find("ffprobe"),
             jsRuntime = js is null ? null : $"{kind}: {js}"

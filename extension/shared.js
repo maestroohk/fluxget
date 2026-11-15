@@ -83,5 +83,7 @@ export async function sendDownload(url, referrer, fileName) {
 }
 
 export async function openMediaInApp(url) {
+  const cookie = await cookieHeader(url)
+  if (cookie) await call('POST', '/api/media/session', { url, headers: { cookie, referer: null, userAgent: navigator.userAgent } }).catch(() => {})
   await call('POST', '/api/app/activate', { argument: `fluxget://media?url=${encodeURIComponent(url)}` })
 }

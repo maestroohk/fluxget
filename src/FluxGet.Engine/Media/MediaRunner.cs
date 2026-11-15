@@ -15,20 +15,27 @@ public sealed record MediaOptions
     public bool Subtitles { get; init; }
     public string? MediaId { get; init; }
     public string? Source { get; init; }
+    public string? Range { get; init; }
+    public int Count { get; init; }
 
     public static readonly string[] Containers = ["mp4", "mkv", "webm"];
     public static readonly string[] AudioFormats = ["mp3", "m4a", "aac", "opus", "flac", "wav"];
     public static readonly string[] Qualities = ["64", "96", "128", "160", "192", "256", "320"];
 }
 
-public sealed class MediaRunner(YtDlp ytDlp) : IJobRunner
+public sealed class MediaRunner(YtDlp ytDlp, GalleryDl gallery) : IJobRunner
 {
     public JobKind Kind => JobKind.Media;
 
     public Task RunAsync(JobContext ctx, CancellationToken ct)
     {
         var o = ctx.Job.GetOptions<MediaOptions>() ?? new MediaOptions();
-        return o.Mode == "convert" ? ConvertAsync(ctx, o, ct) : DownloadAsync(ctx, o, ct);
+        return o.Mode switch
+        {
+            "convert" => ConvertAsync(ctx, o, ct),
+            "gallery" => GalleryAsync(ctx, o, ct),
+            _ => DownloadAsync(ctx, o, ct)
+        };
     }
 
     private async Task DownloadAsync(JobContext ctx, MediaOptions o, CancellationToken ct)
@@ -64,7 +71,7 @@ public sealed class MediaRunner(YtDlp ytDlp) : IJobRunner
         string? cookieFile = null;
         if (job.RequestHeaders is { } headers)
         {
-            if (headers.TryGetValue("Cookie", out var cookie)) cookieFile = WriteCookieFile(ctx.Options.DataDirectory, new Uri(job.Url), cookie);
+            cookieFile = CookieFile.Write(ctx.Options.DataDirectory, new Uri(job.Url), headers);
             if (cookieFile is not null) args.AddRange(["--cookies", cookieFile]);
             if (headers.TryGetValue("Referer", out var referer)) args.AddRange(["--referer", referer]);
             if (headers.TryGetValue("User-Agent", out var ua)) args.AddRange(["--user-agent", ua]);
@@ -89,7 +96,7 @@ public sealed class MediaRunner(YtDlp ytDlp) : IJobRunner
         }
         finally
         {
-            if (cookieFile is not null) TryDelete(cookieFile);
+            CookieFile.Delete(cookieFile);
         }
         TryDeleteDirectory(TempDirectory(job));
         if (final is null || !File.Exists(final)) throw new JobFailedException("yt-dlp finished but the output file was not found.");
@@ -119,21 +126,82 @@ public sealed class MediaRunner(YtDlp ytDlp) : IJobRunner
         }
     }
 
-    private static string? WriteCookieFile(string dataDir, Uri url, string cookieHeader)
+    private async Task GalleryAsync(JobContext ctx, MediaOptions o, CancellationToken ct)
     {
-        var dir = Path.Combine(dataDir, "tmp");
-        Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, $"c-{Guid.NewGuid():N}.txt");
-        var domain = "." + string.Join('.', url.Host.Split('.').TakeLast(2));
-        var sb = new StringBuilder("# Netscape HTTP Cookie File\n");
-        foreach (var part in cookieHeader.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        var job = ctx.Job;
+        var uri = new Uri(job.Url);
+        var folder = GalleryFolder(job);
+        Directory.CreateDirectory(folder);
+        var total = Math.Max(1, o.Count);
+        var saved = new List<string>();
+        void Report() => job.Extra = new Dictionary<string, object?>
         {
-            var eq = part.IndexOf('=');
-            if (eq <= 0) continue;
-            sb.Append($"{domain}\tTRUE\t/\tTRUE\t0\t{part[..eq]}\t{part[(eq + 1)..]}\n");
+            ["title"] = job.FileName, ["mode"] = "gallery", ["folder"] = folder, ["files"] = total, ["saved"] = saved.Count,
+            ["progress"] = Math.Clamp(saved.Count / (double)total, 0, 1)
+        };
+        Report();
+        job.TotalBytes = null;
+        ctx.SetStatus(JobStatus.Running, $"Saving {total} file{(total == 1 ? "" : "s")}");
+
+        var args = gallery.CommonArgs(uri, job.RequestHeaders, out var cookieFile);
+        args.AddRange(["--no-mtime", "-R", "5", "-D", folder]);
+        if (o.Range is { Length: > 0 } range) args.AddRange(["--range", range]);
+        var rate = new[] { job.SpeedLimit, ctx.GlobalLimiter.Rate }.Where(r => r > 0).DefaultIfEmpty(0).Min();
+        if (rate > 0) args.AddRange(["-r", rate.ToString(CultureInfo.InvariantCulture)]);
+        args.Add("--");
+        args.Add(uri.ToString());
+
+        using var measure = new CancellationTokenSource();
+        var sizes = Task.Run(async () =>
+        {
+            while (!measure.IsCancellationRequested)
+            {
+                Interlocked.Exchange(ref job.ReceivedBytes, FolderSize(folder));
+                try { await Task.Delay(500, measure.Token); } catch (OperationCanceledException) { }
+            }
+        }, CancellationToken.None);
+        ProcessResult result;
+        try
+        {
+            result = await ProcessRunner.RunAsync(gallery.Exe, args, line =>
+            {
+                var path = line.StartsWith("# ", StringComparison.Ordinal) ? line[2..] : line;
+                if (!Path.IsPathFullyQualified(path) || !File.Exists(path)) return;
+                lock (saved)
+                {
+                    if (saved.Contains(path)) return;
+                    saved.Add(path);
+                    Report();
+                }
+                ctx.SetStatus(JobStatus.Running, $"Saved {saved.Count} of {total}");
+            }, ct);
         }
-        File.WriteAllText(path, sb.ToString());
-        return path;
+        finally
+        {
+            measure.Cancel();
+            await sizes;
+            CookieFile.Delete(cookieFile);
+        }
+        if (saved.Count == 0) throw new JobFailedException(GalleryDl.FriendlyError(result.StdErr));
+        if (result.ExitCode != 0 && saved.Count < total)
+            throw new JobFailedException($"Saved {saved.Count} of {total} files. {GalleryDl.FriendlyError(result.StdErr)} Retry to fetch the rest.");
+        var bytes = saved.Sum(f => new FileInfo(f).Length);
+        job.FilePath = saved[0];
+        job.TotalBytes = bytes;
+        Interlocked.Exchange(ref job.ReceivedBytes, bytes);
+        if (saved.Count == 1) job.FileName = Path.GetFileName(saved[0]);
+        ctx.Save();
+    }
+
+    internal static string GalleryFolder(Job job)
+    {
+        return Path.Combine(job.Directory, FileNames.FolderName(job.FileName ?? "Images"));
+    }
+
+    private static long FolderSize(string folder)
+    {
+        try { return new DirectoryInfo(folder).EnumerateFiles().Sum(f => f.Length); }
+        catch (Exception) { return 0; }
     }
 
     private async Task ConvertAsync(JobContext ctx, MediaOptions o, CancellationToken ct)
@@ -224,6 +292,13 @@ public sealed class MediaRunner(YtDlp ytDlp) : IJobRunner
     {
         TryDeleteDirectory(TempDirectory(job));
         if (job.Status == JobStatus.Completed) return Task.CompletedTask;
+        if (job.GetOptions<MediaOptions>()?.Mode == "gallery")
+        {
+            var folder = GalleryFolder(job);
+            if (Directory.Exists(folder))
+                foreach (var f in Directory.EnumerateFiles(folder, "*.part")) TryDelete(f);
+            return Task.CompletedTask;
+        }
         var id = job.GetOptions<MediaOptions>()?.MediaId;
         if (string.IsNullOrEmpty(id) || !Directory.Exists(job.Directory)) return Task.CompletedTask;
         foreach (var f in Directory.EnumerateFiles(job.Directory, $"*{id}*"))

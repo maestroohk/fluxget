@@ -58,10 +58,13 @@ public static class FluxGetServer
         builder.Services.AddSingleton<AppSignals>();
         builder.Services.AddSingleton<PreviewTokens>();
         builder.Services.AddSingleton<Transcriber>();
-        builder.Services.AddSingleton<YtDlp>();
+        builder.Services.AddSingleton<SiteSessions>();
+        builder.Services.AddSingleton(sp => new YtDlp(tools, engineOptions, sp.GetRequiredService<SiteSessions>()));
+        builder.Services.AddSingleton(sp => new GalleryDl(tools, engineOptions, sp.GetRequiredService<SiteSessions>()));
+        builder.Services.AddSingleton(sp => new PageScanner(sp.GetRequiredService<SiteSessions>(), engineOptions));
         builder.Services.AddSingleton(sp => new TorrentRunner(engineOptions, store));
         builder.Services.AddSingleton<IJobRunner>(_ => new HttpRunner(engineOptions));
-        builder.Services.AddSingleton<IJobRunner>(sp => new MediaRunner(sp.GetRequiredService<YtDlp>()));
+        builder.Services.AddSingleton<IJobRunner>(sp => new MediaRunner(sp.GetRequiredService<YtDlp>(), sp.GetRequiredService<GalleryDl>()));
         builder.Services.AddSingleton<IJobRunner>(sp => sp.GetRequiredService<TorrentRunner>());
         builder.Services.AddSingleton(sp => new JobManager(store, engineOptions, sp.GetServices<IJobRunner>(), sp.GetRequiredService<ILogger<JobManager>>()));
         builder.Services.AddHostedService<EngineLifetime>();

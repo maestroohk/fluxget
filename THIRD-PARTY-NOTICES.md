@@ -19,6 +19,7 @@ FluxGet is MIT licensed. It uses or ships the following components.
 | Whisper.net, whisper.cpp / ggml | offline speech recognition for subtitles | MIT | yes |
 | Whisper speech models (ggml tiny/base/small) | offline subtitles | MIT (OpenAI Whisper) | no — downloaded on first use from huggingface.co/ggerganov/whisper.cpp and SHA-256 verified |
 | Microsoft.Toolkit.Uwp.Notifications | Windows notifications | MIT | yes |
+| gallery-dl 1.32.20 | photo and gallery downloads (separate executable, run as a process) | GPL-2.0-only | yes, unmodified official build from codeberg.org/mikf/gallery-dl; its licence and the matching source archive are installed next to it in `tools/` |
 | yt-dlp | media extraction (separate executable) | Unlicense | yes, unmodified `yt-dlp.exe` |
 | Deno | JavaScript runtime required by yt-dlp for YouTube (separate executable) | MIT | yes, unmodified `deno.exe` |
 | FFmpeg / FFprobe | merging, remuxing, audio conversion (separate executables) | LGPL-2.1-or-later build | yes, unmodified LGPL build from github.com/BtbN/FFmpeg-Builds; source: https://ffmpeg.org/download.html |

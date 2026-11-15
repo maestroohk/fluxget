@@ -19,7 +19,7 @@ npm ci --no-audit --no-fund
 npm run build
 Pop-Location
 
-if (-not $SkipTools -or -not (Test-Path 'tools/bin/yt-dlp.exe')) { & "$PSScriptRoot/fetch-tools.ps1" }
+if (-not $SkipTools -or -not (Test-Path 'tools/bin/yt-dlp.exe') -or -not (Test-Path 'tools/bin/gallery-dl.exe')) { & "$PSScriptRoot/fetch-tools.ps1" }
 
 dotnet publish src/FluxGet.Desktop -c Release -r $Runtime --self-contained true -p:Version=$Version -o $publish
 New-Item -ItemType Directory -Force (Join-Path $publish 'tools') | Out-Null
